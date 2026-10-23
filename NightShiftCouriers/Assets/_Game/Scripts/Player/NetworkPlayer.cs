@@ -142,7 +142,7 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         foreach (Behaviour behaviour in GetComponents<Behaviour>())
         {
             if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter || behaviour is PlayerVoice
-                || behaviour is LocalMicrophone || behaviour is VoiceClipRecorder)
+                || behaviour is LocalMicrophone)
             {
                 behaviour.enabled = true;
             }

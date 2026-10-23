@@ -113,6 +113,11 @@ public class CampaignManager : NetworkBehaviour
         phase.Value = (int)ShiftPhase.Results;
     }
 
+    public void ServerSetBank(int amount)
+    {
+        bank.Value = amount;
+    }
+
     public bool ServerTrySpend(int amount)
     {
         if (bank.Value < amount)

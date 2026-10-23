@@ -37,7 +37,7 @@ public static class TestPackagesSceneBuilder
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetWetPackageData(), new Vector3(3.5f, 1.3f, 3f));
 
         SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -4f));
-        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(false), true, true);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         SceneBuildHelpers.AddSceneToBuild(ScenePath);

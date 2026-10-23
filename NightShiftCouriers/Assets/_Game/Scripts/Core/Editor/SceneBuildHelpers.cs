@@ -1,20 +1,17 @@
 using System.IO;
+using Unity.AI.Navigation;
 using Unity.Netcode;
-using Unity.Netcode.Components;
 using Unity.Netcode.Transports.UTP;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.AI;
 
-// Shared helpers used by the "Night Shift" menu scene builders.
-// Builds the network prefabs (player, package, monster, managers) as assets, and the
-// NetworkManager + ShiftSpawner objects every scene needs.
-public static class SceneBuildHelpers
+// Shared helpers used by the "Night Shift" menu scene builders: shapes, water, markers and the
+// NetworkManager setup every scene needs. Data assets and prefabs are in SceneBuildHelpers.Assets.cs.
+public static partial class SceneBuildHelpers
 {
-    public const string PrefabFolder = "Assets/_Game/Prefabs";
-    public const string MaterialFolder = "Assets/_Game/Prefabs/Materials";
-    public const string PackageDataFolder = "Assets/_Game/ScriptableObjects/Packages";
-    public const string MonsterDataFolder = "Assets/_Game/ScriptableObjects/Monsters";
-    public const string FloodFolder = "Assets/_Game/ScriptableObjects/Flood";
+    public const int IgnoreRaycastLayer = 2; // players and trigger zones
+    public const int WaterLayer = 4;
 
     // ---------- Basic shapes ----------
 
@@ -51,28 +48,21 @@ public static class SceneBuildHelpers
         target.GetComponent<Renderer>().sharedMaterial = MakeMaterial(color);
     }
 
-    // A material saved as an asset (prefabs cannot keep in-memory materials).
-    public static Material GetMaterialAsset(string assetName, Color color)
-    {
-        string path = MaterialFolder + "/" + assetName + ".mat";
-        Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (material != null)
-        {
-            return material;
-        }
-
-        EnsureFolder(MaterialFolder);
-        material = MakeMaterial(color);
-        AssetDatabase.CreateAsset(material, path);
-        return material;
-    }
-
     public static void EnsureFolder(string path)
     {
         if (!Directory.Exists(path))
         {
             Directory.CreateDirectory(path);
             AssetDatabase.Refresh();
+        }
+    }
+
+    public static void SetLayerRecursively(GameObject root, int layer)
+    {
+        root.layer = layer;
+        foreach (Transform child in root.transform)
+        {
+            SetLayerRecursively(child.gameObject, layer);
         }
     }
 
@@ -90,6 +80,15 @@ public static class SceneBuildHelpers
         }
     }
 
+    // A wall (or drainpipe) players can climb: face it and press Space (plan 4.1). Coloured so it reads as climbable.
+    public static GameObject MakeClimbable(string name, Vector3 position, Vector3 scale)
+    {
+        GameObject block = MakeBlock(name, position, scale);
+        block.AddComponent<Climbable>();
+        ColorObject(block, new Color(0.45f, 0.6f, 0.35f));
+        return block;
+    }
+
     // ---------- Water ----------
 
     // A flat box of water. The surface is the object's Y position; width/length come from the scale.
@@ -98,6 +97,7 @@ public static class SceneBuildHelpers
     {
         GameObject water = GameObject.CreatePrimitive(PrimitiveType.Cube);
         water.name = name;
+        water.layer = WaterLayer;
         water.transform.position = centreAtSurface;
         water.transform.localScale = new Vector3(width, 0.02f, length);
         Object.DestroyImmediate(water.GetComponent<BoxCollider>());
@@ -113,254 +113,13 @@ public static class SceneBuildHelpers
         return volume;
     }
 
-    // ---------- Data assets ----------
-
-    public static PackageData GetOrCreatePackageData(string assetName, string displayName, int value, float mass,
-        bool fragile, bool wetSensitive, int holdersRequired, Vector3 size, Color color)
-    {
-        string path = PackageDataFolder + "/" + assetName + ".asset";
-        PackageData data = AssetDatabase.LoadAssetAtPath<PackageData>(path);
-        if (data != null)
-        {
-            return data;
-        }
-
-        EnsureFolder(PackageDataFolder);
-        data = ScriptableObject.CreateInstance<PackageData>();
-        data.displayName = displayName;
-        data.baseValue = value;
-        data.mass = mass;
-        data.isFragile = fragile;
-        data.wetSensitive = wetSensitive;
-        data.holdersRequired = holdersRequired;
-        data.size = size;
-        data.color = color;
-        AssetDatabase.CreateAsset(data, path);
-        AssetDatabase.SaveAssets();
-        return data;
-    }
-
-    public static PackageData GetStandardPackageData()
-    {
-        return GetOrCreatePackageData("Package_Standard", "Standard Parcel", 100, 3f, false, false, 1,
-            new Vector3(0.5f, 0.4f, 0.5f), new Color(0.8f, 0.6f, 0.3f));
-    }
-
-    public static PackageData GetFragilePackageData()
-    {
-        return GetOrCreatePackageData("Package_Fragile", "Fragile Parcel", 200, 2f, true, false, 1,
-            new Vector3(0.5f, 0.4f, 0.5f), new Color(0.95f, 0.9f, 0.5f));
-    }
-
-    public static PackageData GetHeavyPackageData()
-    {
-        return GetOrCreatePackageData("Package_Heavy", "Heavy Crate (2 players)", 250, 12f, false, false, 2,
-            new Vector3(1.0f, 0.6f, 0.7f), new Color(0.4f, 0.4f, 0.45f));
-    }
-
-    public static PackageData GetWetPackageData()
-    {
-        return GetOrCreatePackageData("Package_WetSensitive", "Documents (keep dry)", 150, 1.5f, false, true, 1,
-            new Vector3(0.5f, 0.3f, 0.4f), new Color(0.9f, 0.9f, 0.95f));
-    }
-
-    public static PackageCatalog GetPackageCatalog()
-    {
-        string path = PackageDataFolder + "/PackageCatalog.asset";
-        PackageCatalog catalog = AssetDatabase.LoadAssetAtPath<PackageCatalog>(path);
-        if (catalog != null)
-        {
-            return catalog;
-        }
-
-        EnsureFolder(PackageDataFolder);
-        catalog = ScriptableObject.CreateInstance<PackageCatalog>();
-        catalog.packages = new PackageData[]
-        {
-            GetStandardPackageData(), GetFragilePackageData(), GetHeavyPackageData(), GetWetPackageData()
-        };
-        AssetDatabase.CreateAsset(catalog, path);
-        AssetDatabase.SaveAssets();
-        return catalog;
-    }
-
-    // Flood settings asset. fast = true gives short stages for testing.
-    public static FloodSettings GetFloodSettings(bool fast)
-    {
-        string path = FloodFolder + (fast ? "/FloodSettings_Test.asset" : "/FloodSettings_Shift.asset");
-        FloodSettings settings = AssetDatabase.LoadAssetAtPath<FloodSettings>(path);
-        if (settings != null)
-        {
-            return settings;
-        }
-
-        EnsureFolder(FloodFolder);
-        settings = ScriptableObject.CreateInstance<FloodSettings>();
-        float duration = fast ? 25f : 180f;
-        settings.stages = new FloodSettings.Stage[]
-        {
-            new FloodSettings.Stage { name = "Dry streets", waterHeight = -0.5f, duration = duration },
-            new FloodSettings.Stage { name = "Wading", waterHeight = 0.9f, duration = duration },
-            new FloodSettings.Stage { name = "Deep", waterHeight = 2.2f, duration = duration },
-        };
-        settings.warningSeconds = fast ? 6f : 10f;
-        settings.riseSpeed = fast ? 0.15f : 0.05f;
-        AssetDatabase.CreateAsset(settings, path);
-        AssetDatabase.SaveAssets();
-        return settings;
-    }
-
-    public static MonsterData GetJalPishachData()
-    {
-        string path = MonsterDataFolder + "/Monster_JalPishach.asset";
-        MonsterData data = AssetDatabase.LoadAssetAtPath<MonsterData>(path);
-        if (data != null)
-        {
-            return data;
-        }
-
-        EnsureFolder(MonsterDataFolder);
-        data = ScriptableObject.CreateInstance<MonsterData>();
-        data.displayName = "Jal-Pishach";
-        AssetDatabase.CreateAsset(data, path);
-        AssetDatabase.SaveAssets();
-        return data;
-    }
-
-    // ---------- Network prefabs ----------
-
-    public class NetworkPrefabs
-    {
-        public GameObject player;
-        public GameObject package;
-        public GameObject jalPishach;
-        public GameObject flood;
-        public GameObject delivery;
-    }
-
-    // Builds (or rebuilds) every network prefab and returns them. Safe to call before every scene build.
-    public static NetworkPrefabs BuildNetworkPrefabs()
-    {
-        EnsureFolder(PrefabFolder);
-        GetPackageCatalog(); // make sure the data assets exist before prefabs refer to them
-
-        NetworkPrefabs prefabs = new NetworkPrefabs();
-        prefabs.player = BuildPlayerPrefab();
-        prefabs.package = BuildPackagePrefab();
-        prefabs.jalPishach = BuildJalPishachPrefab();
-        prefabs.flood = BuildManagerPrefab("FloodManager", typeof(FloodManager), typeof(FloodHUD));
-        prefabs.delivery = BuildManagerPrefab("DeliveryManager", typeof(DeliveryManager), typeof(DeliveryHUD));
-        AssetDatabase.SaveAssets();
-        return prefabs;
-    }
-
-    private static T Ensure<T>(GameObject target) where T : Component
-    {
-        T existing = target.GetComponent<T>();
-        return existing != null ? existing : target.AddComponent<T>();
-    }
-
-    private static GameObject SavePrefab(GameObject instance, string name)
-    {
-        string path = PrefabFolder + "/" + name + ".prefab";
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(instance, path);
-        Object.DestroyImmediate(instance);
-        return prefab;
-    }
-
-    private static void SetObjectField(Object owner, string fieldName, Object value)
-    {
-        SerializedObject so = new SerializedObject(owner);
-        so.FindProperty(fieldName).objectReferenceValue = value;
-        so.ApplyModifiedPropertiesWithoutUndo();
-    }
-
-    private static GameObject BuildPlayerPrefab()
-    {
-        GameObject player = new GameObject("Player");
-        Ensure<NetworkObject>(player);
-        Ensure<CharacterController>(player);
-
-        NetworkPlayer networkPlayer = Ensure<NetworkPlayer>(player);
-        PlayerController controller = Ensure<PlayerController>(player);
-        PlayerInputReader input = Ensure<PlayerInputReader>(player);
-        Ensure<PlayerStamina>(player);
-        PlayerGrabber grabber = Ensure<PlayerGrabber>(player);
-        PlayerNoise noise = Ensure<PlayerNoise>(player);
-        MicNoiseReporter mic = Ensure<MicNoiseReporter>(player);
-        PlayerVoice voice = Ensure<PlayerVoice>(player);
-        Ensure<PlayerHealth>(player);
-
-        // Camera (first person view, used only by the owner)
-        GameObject cameraObject = new GameObject("Camera");
-        cameraObject.transform.SetParent(player.transform, false);
-        cameraObject.transform.localPosition = new Vector3(0f, 1.6f, 0f);
-        cameraObject.AddComponent<Camera>();
-        cameraObject.AddComponent<AudioListener>();
-
-        // Body (what other players see)
-        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        body.name = "Body";
-        Object.DestroyImmediate(body.GetComponent<Collider>());
-        body.transform.SetParent(player.transform, false);
-        body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-        body.transform.localScale = new Vector3(0.6f, 0.9f, 0.6f);
-        body.GetComponent<Renderer>().sharedMaterial = GetMaterialAsset("Player_Body", new Color(0.9f, 0.6f, 0.15f));
-
-        SetObjectField(controller, "cameraTransform", cameraObject.transform);
-        SetObjectField(grabber, "cameraTransform", cameraObject.transform);
-        SetObjectField(networkPlayer, "cameraTransform", cameraObject.transform);
-        SetObjectField(networkPlayer, "bodyVisual", body);
-
-        // Only the owner switches these on (see NetworkPlayer.SetUpLocalPlayer).
-        controller.enabled = false;
-        input.enabled = false;
-        noise.enabled = false;
-        mic.enabled = false;
-        voice.enabled = false;
-
-        return SavePrefab(player, "Player");
-    }
-
-    private static GameObject BuildPackagePrefab()
-    {
-        GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        box.name = "Package";
-        box.GetComponent<Renderer>().sharedMaterial = GetMaterialAsset("Package", Color.white);
-        box.AddComponent<Rigidbody>();
-        Ensure<NetworkObject>(box);
-        Ensure<NetworkTransform>(box);
-        Ensure<Package>(box);
-        return SavePrefab(box, "Package");
-    }
-
-    private static GameObject BuildJalPishachPrefab()
-    {
-        GameObject monster = new GameObject("Jal-Pishach");
-        Ensure<NetworkObject>(monster);
-        Ensure<NetworkTransform>(monster);
-        JalPishach script = Ensure<JalPishach>(monster);
-
-        SetObjectField(script, "data", GetJalPishachData());
-        SetObjectField(script, "visualMaterial", GetMaterialAsset("Monster", Color.white));
-        return SavePrefab(monster, "JalPishach");
-    }
-
-    private static GameObject BuildManagerPrefab(string name, System.Type managerType, System.Type hudType)
-    {
-        GameObject root = new GameObject(name);
-        Ensure<NetworkObject>(root);
-        root.AddComponent(managerType);
-        root.AddComponent(hudType);
-        return SavePrefab(root, name);
-    }
-
     // ---------- Scene setup ----------
 
-    // Adds the NetworkManager object and the ShiftSpawner to the current scene.
+    // Adds the NetworkManager object (with all the HUDs) and the ShiftSpawner to the current scene.
     // autoHost: skip the menu and host immediately (single-player test scenes).
-    // autoStartShift: spawn the flood, orders, packages and monsters as soon as hosting starts.
-    public static void MakeNetworkSetup(NetworkPrefabs prefabs, FloodSettings flood, bool autoHost, bool autoStartShift, int quota)
+    // autoStartShift: start the shift as soon as hosting starts.
+    // startingMoney: -1 = normal; test scenes can give the crew more to try the shop.
+    public static void MakeNetworkSetup(NetworkPrefabs prefabs, FloodSettings flood, bool autoHost, bool autoStartShift, int startingMoney = -1)
     {
         GameObject manager = new GameObject("NetworkManager");
         NetworkManager networkManager = manager.AddComponent<NetworkManager>();
@@ -377,13 +136,29 @@ public static class SceneBuildHelpers
         manager.AddComponent<VoiceChatService>();
         manager.AddComponent<StaminaHUD>();
         manager.AddComponent<MonsterDebugHUD>();
+        manager.AddComponent<InventoryHUD>();
+        manager.AddComponent<CampaignHUD>();
+        manager.AddComponent<MessageFeedHUD>();
+        manager.AddComponent<ShopWindow>();
 
         SerializedObject configSo = new SerializedObject(config);
         configSo.FindProperty("playerPrefab").objectReferenceValue = prefabs.player;
         configSo.FindProperty("packageCatalog").objectReferenceValue = GetPackageCatalog();
+        configSo.FindProperty("itemCatalog").objectReferenceValue = GetItemCatalog();
         configSo.FindProperty("floodSettings").objectReferenceValue = flood;
+        configSo.FindProperty("raftPartFloaters").objectReferenceValue = GetRaftFloatersData();
+        configSo.FindProperty("raftPartPlatform").objectReferenceValue = GetRaftPlatformData();
+        configSo.FindProperty("raftPartLashing").objectReferenceValue = GetRaftLashingData();
+        configSo.FindProperty("itemPrefabs.rope").objectReferenceValue = prefabs.rope;
+        configSo.FindProperty("itemPrefabs.plank").objectReferenceValue = prefabs.plank;
+        configSo.FindProperty("itemPrefabs.decoy").objectReferenceValue = prefabs.decoy;
+        configSo.FindProperty("itemPrefabs.saltWard").objectReferenceValue = prefabs.saltWard;
+        configSo.FindProperty("itemPrefabs.glowStick").objectReferenceValue = prefabs.glowStick;
+        configSo.FindProperty("itemPrefabs.worldItem").objectReferenceValue = prefabs.worldItem;
+        configSo.FindProperty("itemPrefabs.raft").objectReferenceValue = prefabs.raft;
+
+        GameObject[] spawnable = prefabs.AllSpawnable();
         SerializedProperty list = configSo.FindProperty("networkPrefabs");
-        GameObject[] spawnable = { prefabs.package, prefabs.jalPishach, prefabs.flood, prefabs.delivery };
         list.arraySize = spawnable.Length;
         for (int i = 0; i < spawnable.Length; i++)
         {
@@ -398,13 +173,26 @@ public static class SceneBuildHelpers
         GameObject spawnerObject = new GameObject("ShiftSpawner");
         ShiftSpawner spawner = spawnerObject.AddComponent<ShiftSpawner>();
         SerializedObject spawnerSo = new SerializedObject(spawner);
+        spawnerSo.FindProperty("campaignPrefab").objectReferenceValue = prefabs.campaign;
         spawnerSo.FindProperty("floodPrefab").objectReferenceValue = prefabs.flood;
         spawnerSo.FindProperty("deliveryPrefab").objectReferenceValue = prefabs.delivery;
         spawnerSo.FindProperty("packagePrefab").objectReferenceValue = prefabs.package;
         spawnerSo.FindProperty("jalPishachPrefab").objectReferenceValue = prefabs.jalPishach;
-        spawnerSo.FindProperty("quota").intValue = quota;
+        spawnerSo.FindProperty("chudailPrefab").objectReferenceValue = prefabs.chudail;
+        spawnerSo.FindProperty("vetalaPrefab").objectReferenceValue = prefabs.vetala;
         spawnerSo.FindProperty("autoStartShift").boolValue = autoStartShift;
+        spawnerSo.FindProperty("startingMoneyOverride").intValue = startingMoney;
         spawnerSo.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // The walking map for the Chudail. It is rebuilt on the server at the start of every shift.
+    public static void MakeNavMeshSurface()
+    {
+        GameObject navigation = new GameObject("NavMesh (rebuilt each shift)");
+        NavMeshSurface surface = navigation.AddComponent<NavMeshSurface>();
+        surface.collectObjects = CollectObjects.All;
+        surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+        surface.layerMask = ~((1 << IgnoreRaycastLayer) | (1 << WaterLayer)); // no players, triggers or water
     }
 
     // Adds a saved scene to File > Build Profiles so builds (and Netcode) can find it.
@@ -462,11 +250,29 @@ public static class SceneBuildHelpers
         point.destination = destination;
     }
 
+    // Jal-Pishach: lives in the given water.
     public static void MakeMonsterSpawn(WaterVolume home, Vector3 position)
     {
         GameObject marker = new GameObject("Jal-Pishach Spawn");
         marker.transform.position = position;
-        marker.AddComponent<MonsterSpawnPoint>().homeWater = home;
+        MonsterSpawnPoint point = marker.AddComponent<MonsterSpawnPoint>();
+        point.kind = MonsterKind.JalPishach;
+        point.homeWater = home;
+    }
+
+    // Chudail (walks from here) or Vetala (hangs here).
+    public static void MakeMonsterSpawn(MonsterKind kind, Vector3 position)
+    {
+        GameObject marker = new GameObject(kind + " Spawn");
+        marker.transform.position = position;
+        marker.AddComponent<MonsterSpawnPoint>().kind = kind;
+    }
+
+    public static void MakeItemSpawn(ItemData item, Vector3 position)
+    {
+        GameObject marker = new GameObject("Item Spawn - " + item.displayName);
+        marker.transform.position = position;
+        marker.AddComponent<WorldItemSpawnPoint>().item = item;
     }
 
     // A glowing marker zone where packages are delivered.
@@ -474,6 +280,7 @@ public static class SceneBuildHelpers
     {
         GameObject zone = GameObject.CreatePrimitive(PrimitiveType.Cube);
         zone.name = "Delivery: " + address;
+        zone.layer = IgnoreRaycastLayer;
         zone.transform.position = groundPosition + new Vector3(0f, size.y / 2f, 0f);
         zone.transform.localScale = size;
         Object.DestroyImmediate(zone.GetComponent<BoxCollider>());
@@ -485,5 +292,60 @@ public static class SceneBuildHelpers
         so.FindProperty("address").stringValue = address;
         so.ApplyModifiedPropertiesWithoutUndo();
         return point;
+    }
+
+    // The depot shop: press E on it to buy items.
+    public static void MakeShopTerminal(Vector3 groundPosition, float yaw)
+    {
+        GameObject terminal = MakeBlock("Shop Terminal (E)", groundPosition + Vector3.up * 0.75f, new Vector3(1.2f, 1.5f, 0.6f));
+        terminal.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        ColorObject(terminal, new Color(0.95f, 0.75f, 0.1f));
+
+        GameObject drop = new GameObject("Drop Point");
+        drop.transform.SetParent(terminal.transform, false);
+        drop.transform.localPosition = new Vector3(0f, 0.2f, 1.5f);
+
+        ShopTerminal shop = terminal.AddComponent<ShopTerminal>();
+        SerializedObject so = new SerializedObject(shop);
+        so.FindProperty("dropPoint").objectReferenceValue = drop.transform;
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // Where players must be at dawn (plan 4.3).
+    public static void MakeExtractionZone(Vector3 centre, Vector3 size)
+    {
+        GameObject zone = new GameObject("Extraction Zone (be here at dawn)");
+        zone.layer = IgnoreRaycastLayer;
+        zone.transform.position = centre;
+        BoxCollider box = zone.AddComponent<BoxCollider>();
+        box.size = size;
+        box.isTrigger = true;
+        zone.AddComponent<ExtractionZone>();
+    }
+
+    // A raft workbench (plan 4.4): parts go in the zone in front of it, the raft appears at the launch point.
+    public static void MakeRaftSpot(Vector3 benchPosition, float yaw, Vector3 launchPosition)
+    {
+        GameObject bench = MakeBlock("Raft Workbench (E)", benchPosition + Vector3.up * 0.45f, new Vector3(2f, 0.9f, 0.8f));
+        bench.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        ColorObject(bench, new Color(0.55f, 0.35f, 0.2f));
+
+        GameObject zone = new GameObject("Raft Parts Zone");
+        zone.layer = IgnoreRaycastLayer;
+        zone.transform.SetParent(bench.transform, false);
+        zone.transform.localPosition = new Vector3(0f, 0.5f, 2.2f);
+        BoxCollider box = zone.AddComponent<BoxCollider>();
+        box.isTrigger = true;
+        // The bench is scaled; undo that so the zone is about 4 x 2 x 3 m.
+        box.size = new Vector3(4f / 2f, 2f / 0.9f, 3f / 0.8f);
+
+        GameObject launch = new GameObject("Raft Launch Point");
+        launch.transform.position = launchPosition;
+
+        RaftSpot spot = bench.AddComponent<RaftSpot>();
+        SerializedObject so = new SerializedObject(spot);
+        so.FindProperty("partsZone").objectReferenceValue = box;
+        so.FindProperty("launchPoint").objectReferenceValue = launch.transform;
+        so.ApplyModifiedPropertiesWithoutUndo();
     }
 }

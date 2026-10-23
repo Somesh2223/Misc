@@ -121,6 +121,11 @@ public abstract class MonsterBase : NetworkBehaviour
             {
                 continue;
             }
+            // A lemon-chilli charm hides the player from this kind of monster.
+            if (candidate.Inventory != null && candidate.Inventory.IsCharmedAgainst(data.kind))
+            {
+                continue;
+            }
             float score = TargetScore(candidate);
             if (score < bestScore)
             {

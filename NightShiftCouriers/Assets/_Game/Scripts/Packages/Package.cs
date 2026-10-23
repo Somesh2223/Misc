@@ -337,6 +337,12 @@ public class Package : NetworkBehaviour
         return false;
     }
 
+    // The first player holding it, or null (server).
+    public PlayerGrabber ServerFirstHolder()
+    {
+        return holders.Count > 0 ? holders[0] : null;
+    }
+
     // Repair kit (plan 4.5). Returns false if there was nothing to fix.
     public bool ServerRepair(float amount)
     {

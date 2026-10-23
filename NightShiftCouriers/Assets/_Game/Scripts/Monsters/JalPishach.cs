@@ -138,35 +138,67 @@ public class JalPishach : MonsterBase
 
     protected override bool CanTrackTarget()
     {
-        // Follows anyone still in the water. Climbing out loses it.
-        return target.WaterDepth >= 0.3f && IsOverWater(target.Position, 1f);
+        // Follows anyone still in the water (or on a raft). Climbing out loses it.
+        bool inWater = target.WaterDepth >= 0.3f || target.IsOnRaft;
+        return inWater && IsOverWater(target.Position, 1f);
     }
 
     protected override bool CanAttackTarget()
     {
-        if (target.IsDead)
+        if (target.IsDead || IsRepelledByLight())
         {
             return false;
+        }
+        if (target.IsOnRaft)
+        {
+            return Raft.Current != null && HorizontalDistance(transform.position, Raft.Current.transform.position) <= data.attackRange + 1.5f;
         }
         bool inWater = target.WaterDepth >= 0.3f;
         return inWater && HorizontalDistanceToTarget() <= data.attackRange;
     }
 
+    // A flashlight shone straight at it makes it back off (plan 4.5: light repels some monsters).
+    private bool IsRepelledByLight()
+    {
+        if (target.Inventory == null || !target.Inventory.FlashlightOn)
+        {
+            return false;
+        }
+        Vector3 toMonster = (transform.position - target.Position).normalized;
+        return Vector3.Dot(target.Forward, toMonster) > 0.7f;
+    }
+
     protected override void PerformAttack()
     {
+        // On a raft: ram it (rafts break after a few hits).
+        if (target.IsOnRaft && Raft.Current != null)
+        {
+            Raft.Current.ServerDamage(1);
+            GameEvents.RaiseNoise(transform.position, 3f, true);
+            SplashClientRpc();
+            return;
+        }
+
         // Drag the victim down and toward the monster.
         Vector3 toMonster = transform.position - target.Position;
         toMonster.y = 0f;
         target.ServerAddImpulse(Vector3.down * dragDownSpeed + toMonster.normalized * 2f);
         target.Health.TakeDamage(data.attackDamage);
         GameEvents.RaiseNoise(transform.position, 3f, true); // the splash of the attack
+        SplashClientRpc();
+    }
+
+    [ClientRpc]
+    private void SplashClientRpc()
+    {
+        ProceduralSounds.PlayAt(ProceduralSounds.Splash, transform.position, 1f, 30f);
     }
 
     // Prefer players who are in the water over its home.
     protected override float TargetScore(NetworkPlayer candidate)
     {
         float score = base.TargetScore(candidate);
-        if (candidate.WaterDepth < 0.3f)
+        if (candidate.WaterDepth < 0.3f && !candidate.IsOnRaft)
         {
             score += 1000f;
         }

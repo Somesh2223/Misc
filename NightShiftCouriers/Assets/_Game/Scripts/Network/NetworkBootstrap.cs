@@ -197,7 +197,7 @@ public class NetworkBootstrap : MonoBehaviour
 
     private void DrawConnectedPanel()
     {
-        GUILayout.BeginArea(new Rect(Screen.width - 260, 90, 240, 200));
+        GUILayout.BeginArea(new Rect(Screen.width - 260, 90, 240, 420));
 
         string role = network.IsHost ? "Hosting" : "Connected";
         GUILayout.Label(role + " - crew: " + network.ConnectedClientsIds.Count + "/" + config.MaxPlayers);
@@ -238,6 +238,13 @@ public class NetworkBootstrap : MonoBehaviour
         if (mic != null && !mic.UsingVoiceChat && GUILayout.Button("Mic noise only: " + (mic.UseMicrophone ? "ON" : "OFF")))
         {
             mic.UseMicrophone = !mic.UseMicrophone;
+        }
+
+        string mimic = LocalMicrophone.ShareVoiceWithChudail ? "ON" : "OFF";
+        if (GUILayout.Button("Chudail voice mimic: " + mimic))
+        {
+            // When on, short clips of your voice go to the host (this session only, never saved) so the Chudail can copy you.
+            LocalMicrophone.ShareVoiceWithChudail = !LocalMicrophone.ShareVoiceWithChudail;
         }
 
         if (GUILayout.Button("Disconnect")) Disconnect();

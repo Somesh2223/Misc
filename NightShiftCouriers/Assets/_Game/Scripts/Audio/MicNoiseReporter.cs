@@ -1,13 +1,12 @@
 using UnityEngine;
 
 // Turns how loudly the player talks into monster-audible noise (plan section 4.12: voice loudness counts as noise).
-// This only MEASURES the microphone. Sending voice to other players needs a voice chat plugin (see README).
+// Uses Vivox's speech level while voice chat is connected, otherwise (if enabled) the raw microphone.
 // Only the owner runs this (NetworkPlayer enables it).
 [RequireComponent(typeof(NetworkPlayer))]
+[RequireComponent(typeof(LocalMicrophone))]
 public class MicNoiseReporter : MonoBehaviour
 {
-    [SerializeField, Tooltip("Start with the microphone on. The in-game panel can toggle it.")]
-    private bool useMicrophone = false;
     [SerializeField, Tooltip("Vivox reports speech energy on a different scale than the raw microphone. Tune this so normal speech lands around 0.1.")]
     private float vivoxLevelScale = 0.5f;
     [SerializeField, Tooltip("Microphone level (0-1) below this counts as silence.")]
@@ -19,94 +18,45 @@ public class MicNoiseReporter : MonoBehaviour
     [SerializeField, Tooltip("Seconds between noise reports while talking.")]
     private float reportInterval = 0.4f;
 
-    private const int SampleWindow = 512;
-    private const int SampleRate = 16000;
-
     private NetworkPlayer networkPlayer;
-    private AudioClip micClip;
-    private string deviceName;
+    private LocalMicrophone microphone;
     private float timer;
-    private readonly float[] samples = new float[SampleWindow];
 
-    // 0 = silent, around 0.1 = speaking, 0.3+ = shouting. Other systems (e.g. UI) may read this.
+    // 0 = silent, around 0.1 = speaking, 0.3+ = shouting.
     public float CurrentLevel { get; private set; }
+
+    // True while the level comes from Vivox (the voice chat is connected).
+    public bool UsingVoiceChat { get; private set; }
+
+    // Raw-microphone noise, used only when Vivox is not connected.
+    public bool UseMicrophone
+    {
+        get => LocalMicrophone.MicNoiseEnabled;
+        set => LocalMicrophone.MicNoiseEnabled = value;
+    }
 
     private void Awake()
     {
         networkPlayer = GetComponent<NetworkPlayer>();
+        microphone = GetComponent<LocalMicrophone>();
     }
-
-    // Turn microphone noise on or off while playing.
-    public bool UseMicrophone
-    {
-        get => useMicrophone;
-        set
-        {
-            useMicrophone = value;
-            if (isActiveAndEnabled)
-            {
-                if (useMicrophone) StartMic(); else StopMic();
-            }
-        }
-    }
-
-    private void OnEnable()
-    {
-        if (useMicrophone)
-        {
-            StartMic();
-        }
-    }
-
-    private void OnDisable()
-    {
-        StopMic();
-    }
-
-    private void StartMic()
-    {
-        if (micClip != null || Microphone.devices.Length == 0)
-        {
-            return;
-        }
-        deviceName = Microphone.devices[0];
-        micClip = Microphone.Start(deviceName, true, 1, SampleRate);
-    }
-
-    private void StopMic()
-    {
-        if (micClip != null)
-        {
-            Microphone.End(deviceName);
-            micClip = null;
-            CurrentLevel = 0f;
-        }
-    }
-
-    // True while the level comes from Vivox (the voice chat owns the microphone then).
-    public bool UsingVoiceChat { get; private set; }
 
     private void Update()
     {
-        // With voice chat running, Vivox owns the microphone: use its speech level and keep Unity's microphone off.
         VoiceChatService voice = VoiceChatService.Instance;
         UsingVoiceChat = voice != null && voice.IsConnected;
         if (UsingVoiceChat)
         {
-            StopMic();
             CurrentLevel = voice.LocalLevel * vivoxLevelScale;
+        }
+        else if (LocalMicrophone.MicNoiseEnabled && microphone.Running)
+        {
+            CurrentLevel = microphone.Level;
         }
         else
         {
-            if (useMicrophone)
-            {
-                StartMic();
-            }
-            if (micClip == null)
-            {
-                return;
-            }
-            CurrentLevel = MeasureLevel();
+            CurrentLevel = 0f;
+            return;
         }
 
         timer -= Time.deltaTime;
@@ -119,22 +69,5 @@ public class MicNoiseReporter : MonoBehaviour
         float loudness = Mathf.Clamp(CurrentLevel / 0.1f * loudnessAtNormalVoice, 0f, maxLoudness);
         // Voices are not "water noise": a water monster hears them only if the speaker also splashes.
         networkPlayer.ReportNoise(loudness, false);
-    }
-
-    private float MeasureLevel()
-    {
-        int position = Microphone.GetPosition(deviceName) - SampleWindow;
-        if (position < 0)
-        {
-            return 0f;
-        }
-
-        micClip.GetData(samples, position);
-        float sum = 0f;
-        for (int i = 0; i < SampleWindow; i++)
-        {
-            sum += samples[i] * samples[i];
-        }
-        return Mathf.Sqrt(sum / SampleWindow); // root-mean-square level
     }
 }

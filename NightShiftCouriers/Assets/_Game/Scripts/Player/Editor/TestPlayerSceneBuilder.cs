@@ -29,7 +29,7 @@ public static class TestPlayerSceneBuilder
         SceneBuildHelpers.MakeWater("Shallow Water", new Vector3(-18f, 0.5f, 0f), 10f, 10f);
 
         SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -8f));
-        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, false, 400);
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(false), true, false);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         SceneBuildHelpers.AddSceneToBuild(ScenePath);

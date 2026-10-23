@@ -41,6 +41,9 @@ public class VoiceChatService : MonoBehaviour
         Instance = this;
     }
 
+    // True while this player is also on the long-range radio channel (has a radio item).
+    public bool OnRadio { get; private set; }
+
     public void SetMode(VoiceMode mode)
     {
         Mode = mode;
@@ -49,6 +52,7 @@ public class VoiceChatService : MonoBehaviour
 
 #if VIVOX_PRESENT
     private string channelName = "";
+    private string radioChannelName = "";
     private bool busy;
     private float positionTimer;
     private bool transmitting = true;
@@ -110,6 +114,55 @@ public class VoiceChatService : MonoBehaviour
         }
     }
 
+    // The radio item (plan 4.5): a second, non-positional channel everyone with a radio hears at any range.
+    public async Task<bool> JoinRadioAsync(string radioChannel)
+    {
+        if (!IsConnected || OnRadio || busy)
+        {
+            return OnRadio;
+        }
+        busy = true;
+        try
+        {
+            await VivoxService.Instance.JoinGroupChannelAsync(radioChannel, ChatCapability.AudioOnly);
+            await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.All);
+            radioChannelName = radioChannel;
+            OnRadio = true;
+            return true;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Could not join the radio channel: " + e.Message);
+            return false;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    public async Task LeaveRadioAsync()
+    {
+        if (!OnRadio || busy)
+        {
+            return;
+        }
+        busy = true;
+        try
+        {
+            await VivoxService.Instance.LeaveChannelAsync(radioChannelName);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Could not leave the radio channel: " + e.Message);
+        }
+        finally
+        {
+            OnRadio = false;
+            busy = false;
+        }
+    }
+
     public async void LeaveAsync()
     {
         if (!IsConnected)
@@ -118,6 +171,7 @@ public class VoiceChatService : MonoBehaviour
         }
 
         IsConnected = false;
+        OnRadio = false;
         LocalLevel = 0f;
         Status = "Voice: not connected";
         try
@@ -218,6 +272,8 @@ public class VoiceChatService : MonoBehaviour
 
     public void LeaveAsync() { }
     public void UpdatePosition(GameObject speakerAndListener) { }
+    public Task<bool> JoinRadioAsync(string radioChannel) { return Task.FromResult(false); }
+    public Task LeaveRadioAsync() { return Task.CompletedTask; }
     private void ApplyTransmit() { }
 #endif
 }

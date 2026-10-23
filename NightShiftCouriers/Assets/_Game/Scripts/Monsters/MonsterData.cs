@@ -5,6 +5,9 @@ using UnityEngine;
 public class MonsterData : ScriptableObject
 {
     public string displayName = "Monster";
+    public MonsterKind kind = MonsterKind.JalPishach;
+    [Tooltip("Salt wards stop this monster (plan 4.5).")]
+    public bool blockedBySalt = false;
 
     [Header("Movement (m/s)")]
     public float wanderSpeed = 1.5f;

@@ -21,9 +21,12 @@ public class ShiftSpawner : MonoBehaviour
     [Header("Shift")]
     [SerializeField, Tooltip("Start the shift as soon as the host starts (test scenes). Off = the host presses START SHIFT.")]
     private bool autoStartShift = false;
+    [SerializeField, Tooltip("Test scenes: start the run with this much money (-1 = the normal amount).")]
+    private int startingMoneyOverride = -1;
 
     private readonly List<NetworkObject> shiftObjects = new List<NetworkObject>();
     private SteamLobbyService steam;
+    private bool campaignSpawned;
 
     public bool ShiftStarted => CampaignManager.Instance != null && CampaignManager.Instance.Phase != ShiftPhase.Depot;
 
@@ -36,6 +39,13 @@ public class ShiftSpawner : MonoBehaviour
     {
         steam = FindFirstObjectByType<SteamLobbyService>();
         NetworkManager.Singleton.OnServerStarted += OnServerStarted;
+        NetworkManager.Singleton.OnServerStopped += OnServerStopped;
+
+        // Test scenes may start hosting before this Start runs; catch up if so.
+        if (NetworkManager.Singleton.IsServer)
+        {
+            OnServerStarted();
+        }
     }
 
     private void OnDestroy()
@@ -43,16 +53,33 @@ public class ShiftSpawner : MonoBehaviour
         if (NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnServerStarted -= OnServerStarted;
+            NetworkManager.Singleton.OnServerStopped -= OnServerStopped;
         }
+    }
+
+    private void OnServerStopped(bool wasHost)
+    {
+        campaignSpawned = false;
+        shiftObjects.Clear();
     }
 
     private static bool IsServer => NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer;
 
     private void OnServerStarted()
     {
+        if (campaignSpawned)
+        {
+            return;
+        }
+        campaignSpawned = true;
+
         // The campaign lives for the whole hosted session (bank, quota, nights).
         GameObject campaign = Instantiate(campaignPrefab);
         campaign.GetComponent<NetworkObject>().Spawn(true);
+        if (startingMoneyOverride >= 0)
+        {
+            campaign.GetComponent<CampaignManager>().ServerSetBank(startingMoneyOverride);
+        }
 
         if (autoStartShift)
         {

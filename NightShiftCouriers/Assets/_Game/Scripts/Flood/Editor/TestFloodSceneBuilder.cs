@@ -33,7 +33,7 @@ public static class TestFloodSceneBuilder
         SceneBuildHelpers.MakeWater("Flood Water", new Vector3(0f, -0.5f, 0f), 80f, 80f, true);
 
         SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -10f));
-        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         SceneBuildHelpers.AddSceneToBuild(ScenePath);

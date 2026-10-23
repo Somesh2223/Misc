@@ -45,6 +45,21 @@ public class PlayerVoice : MonoBehaviour
 
         voice.PushToTalkHeld = Keyboard.current != null && Keyboard.current.vKey.isPressed;
         voice.UpdatePosition(gameObject);
+
+        // Carrying a radio puts you on the crew's long-range channel too.
+        bool wantRadio = networkPlayer.Inventory != null && networkPlayer.Inventory.HasItem(ItemType.Radio);
+        if (wantRadio && !voice.OnRadio && !joining)
+        {
+            joining = true;
+            await voice.JoinRadioAsync(networkPlayer.VoiceChannel + "radio");
+            joining = false;
+        }
+        else if (!wantRadio && voice.OnRadio && !joining)
+        {
+            joining = true;
+            await voice.LeaveRadioAsync();
+            joining = false;
+        }
     }
 
     private void OnDisable()

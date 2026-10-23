@@ -49,7 +49,7 @@ public static class TestJalPishachSceneBuilder
         SceneBuildHelpers.MakeMonsterSpawn(water, new Vector3(0f, 1f, centre.z));
 
         SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, southEdge - 8f));
-        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(false), true, true);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         SceneBuildHelpers.AddSceneToBuild(ScenePath);
