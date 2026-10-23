@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eee3f0a2183ffb34e9427f9fd1dab97d, type: 3}
+  m_Name: PackageCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::PackageCatalog
+  packages:
+  - {fileID: 11400000, guid: bca2a8c63191c7a408158f6de2746aa2, type: 2}
+  - {fileID: 11400000, guid: 789b3221e2acdc842b987e80248dd82b, type: 2}
+  - {fileID: 11400000, guid: 663e9ea5e4bfa9f4396fd6236cda8deb, type: 2}
+  - {fileID: 11400000, guid: c7adca8894cecf34ab378eeaa16026ca, type: 2}

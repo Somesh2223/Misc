@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3aab9dbdd395d1048bc5da0a0890fa6b, type: 3}
+  m_Name: Package_Standard
+  m_EditorClassIdentifier: Assembly-CSharp::PackageData
+  displayName: Standard Parcel
+  baseValue: 100
+  mass: 3
+  holdersRequired: 1
+  size: {x: 0.5, y: 0.4, z: 0.5}
+  color: {r: 0.8, g: 0.6, b: 0.3, a: 1}
+  isFragile: 0
+  maxHealth: 100
+  safeImpactSpeed: 3
+  damagePerSpeed: 10
+  wetSensitive: 0
+  secondsToRuin: 10
