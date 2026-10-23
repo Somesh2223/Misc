@@ -1,0 +1,9 @@
+{
+  "name": "com.community.netcode.transport.facepunch",
+  "displayName": "Facepunch Transport for Netcode for GameObjects",
+  "version": "2.0.1",
+  "unity": "2019.4",
+  "description": "Facepunch Transport for Netcode for GameObjects (embedded copy patched for Netcode for GameObjects 2.x by Night Shift Couriers)",
+  "author": "Nico Thomas (Transport Adapter), Floris van Onna (Transport Adapter), Garry Newman (Author of Facepunch.Steamworks)",
+  "dependencies": {}
+}
