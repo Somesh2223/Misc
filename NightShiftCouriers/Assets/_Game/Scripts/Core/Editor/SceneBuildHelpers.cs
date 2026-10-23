@@ -7,6 +7,7 @@ public static class SceneBuildHelpers
 {
     public const string PackageDataFolder = "Assets/_Game/ScriptableObjects/Packages";
     public const string MonsterDataFolder = "Assets/_Game/ScriptableObjects/Monsters";
+    public const string FloodFolder = "Assets/_Game/ScriptableObjects/Flood";
 
     public static GameObject MakeBlock(string name, Vector3 position, Vector3 scale, Transform parent = null)
     {
@@ -172,6 +173,69 @@ public static class SceneBuildHelpers
             handler.intValue = 1; // 1 = Input System Package (new)
             settings.ApplyModifiedPropertiesWithoutUndo();
             Debug.LogWarning("Switched active input handler to the new Input System. Restart the editor if Unity asks.");
+        }
+    }
+
+    // Flood settings asset. fast = true gives short stages for testing.
+    public static FloodSettings GetFloodSettings(bool fast)
+    {
+        string path = FloodFolder + (fast ? "/FloodSettings_Test.asset" : "/FloodSettings_Shift.asset");
+        FloodSettings settings = AssetDatabase.LoadAssetAtPath<FloodSettings>(path);
+        if (settings != null)
+        {
+            return settings;
+        }
+
+        EnsureFolder(FloodFolder);
+        settings = ScriptableObject.CreateInstance<FloodSettings>();
+        float duration = fast ? 25f : 180f;
+        settings.stages = new FloodSettings.Stage[]
+        {
+            new FloodSettings.Stage { name = "Dry streets", waterHeight = -0.5f, duration = duration },
+            new FloodSettings.Stage { name = "Wading", waterHeight = 0.9f, duration = duration },
+            new FloodSettings.Stage { name = "Deep", waterHeight = 2.2f, duration = duration },
+        };
+        settings.warningSeconds = fast ? 6f : 10f;
+        settings.riseSpeed = fast ? 0.15f : 0.05f;
+        AssetDatabase.CreateAsset(settings, path);
+        AssetDatabase.SaveAssets();
+        return settings;
+    }
+
+    // Adds a FloodManager + FloodHUD wired to the given water volumes.
+    public static FloodManager MakeFlood(FloodSettings settings, params WaterVolume[] waters)
+    {
+        GameObject floodObject = new GameObject("Flood");
+        FloodManager manager = floodObject.AddComponent<FloodManager>();
+        FloodHUD hud = floodObject.AddComponent<FloodHUD>();
+
+        SerializedObject managerSo = new SerializedObject(manager);
+        managerSo.FindProperty("settings").objectReferenceValue = settings;
+        SerializedProperty list = managerSo.FindProperty("floodWaters");
+        list.arraySize = waters.Length;
+        for (int i = 0; i < waters.Length; i++)
+        {
+            list.GetArrayElementAtIndex(i).objectReferenceValue = waters[i];
+        }
+        managerSo.ApplyModifiedPropertiesWithoutUndo();
+
+        SerializedObject hudSo = new SerializedObject(hud);
+        hudSo.FindProperty("flood").objectReferenceValue = manager;
+        hudSo.ApplyModifiedPropertiesWithoutUndo();
+        return manager;
+    }
+
+    // Stairs of 0.3 m steps (matches the CharacterController step offset) rising along +Z.
+    public static void MakeStairs(string name, Vector3 startBottom, float width, int steps)
+    {
+        GameObject parent = new GameObject(name);
+        for (int i = 0; i < steps; i++)
+        {
+            float height = 0.3f * (i + 1);
+            GameObject step = MakeBlock("Step " + (i + 1),
+                startBottom + new Vector3(0f, height / 2f, 1f * i + 0.5f),
+                new Vector3(width, height, 1f), parent.transform);
+            ColorObject(step, new Color(0.6f, 0.6f, 0.6f));
         }
     }
 }
