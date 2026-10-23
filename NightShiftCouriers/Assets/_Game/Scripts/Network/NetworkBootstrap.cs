@@ -213,8 +213,19 @@ public class NetworkBootstrap : MonoBehaviour
             GUILayout.Label("Waiting for the host to start the shift...");
         }
 
+        VoiceChatService voice = VoiceChatService.Instance;
+        if (voice != null)
+        {
+            GUILayout.Label(voice.Status);
+            if (voice.IsConnected && GUILayout.Button("Mic: " + voice.Mode + (voice.Mode == VoiceMode.PushToTalk ? " (hold V)" : "")))
+            {
+                voice.SetMode((VoiceMode)(((int)voice.Mode + 1) % 3));
+            }
+        }
+
+        // Without voice chat, a plain microphone level still makes noise for monsters.
         MicNoiseReporter mic = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponent<MicNoiseReporter>() : null;
-        if (mic != null && GUILayout.Button("Mic noise: " + (mic.UseMicrophone ? "ON" : "OFF")))
+        if (mic != null && !mic.UsingVoiceChat && GUILayout.Button("Mic noise only: " + (mic.UseMicrophone ? "ON" : "OFF")))
         {
             mic.UseMicrophone = !mic.UseMicrophone;
         }

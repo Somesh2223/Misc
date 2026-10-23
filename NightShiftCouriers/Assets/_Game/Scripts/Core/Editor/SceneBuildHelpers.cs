@@ -285,6 +285,7 @@ public static class SceneBuildHelpers
         PlayerGrabber grabber = Ensure<PlayerGrabber>(player);
         PlayerNoise noise = Ensure<PlayerNoise>(player);
         MicNoiseReporter mic = Ensure<MicNoiseReporter>(player);
+        PlayerVoice voice = Ensure<PlayerVoice>(player);
         Ensure<PlayerHealth>(player);
 
         // Camera (first person view, used only by the owner)
@@ -313,6 +314,7 @@ public static class SceneBuildHelpers
         input.enabled = false;
         noise.enabled = false;
         mic.enabled = false;
+        voice.enabled = false;
 
         return SavePrefab(player, "Player");
     }
@@ -363,6 +365,7 @@ public static class SceneBuildHelpers
         GameNetworkConfig config = manager.AddComponent<GameNetworkConfig>();
         NetworkBootstrap bootstrap = manager.AddComponent<NetworkBootstrap>();
         manager.AddComponent<SteamLobbyService>();
+        manager.AddComponent<VoiceChatService>();
         manager.AddComponent<StaminaHUD>();
         manager.AddComponent<MonsterDebugHUD>();
 

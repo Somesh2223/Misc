@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -14,6 +16,7 @@ public class NetworkPlayer : NetworkBehaviour
     private const byte FlagSprinting = 4;
 
     private static readonly List<NetworkPlayer> allPlayers = new List<NetworkPlayer>();
+    private static string serverVoiceChannel; // one voice channel per hosted session (server only)
 
     public static IReadOnlyList<NetworkPlayer> All => allPlayers;
     public static NetworkPlayer Local { get; private set; }
@@ -42,6 +45,9 @@ public class NetworkPlayer : NetworkBehaviour
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<byte> netFlags = new NetworkVariable<byte>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    // Written by the server: the Vivox channel name everyone in this crew joins.
+    private readonly NetworkVariable<FixedString64Bytes> voiceChannel = new NetworkVariable<FixedString64Bytes>(
+        default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<Vector3> netAimOrigin = new NetworkVariable<Vector3>(
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<Vector3> netAimDirection = new NetworkVariable<Vector3>(
@@ -63,6 +69,7 @@ public class NetworkPlayer : NetworkBehaviour
     public bool IsCrouching => (netFlags.Value & FlagCrouching) != 0;
     public bool IsSprinting => (netFlags.Value & FlagSprinting) != 0;
     public bool IsDead => health != null && health.IsDead;
+    public string VoiceChannel => voiceChannel.Value.ToString();
     public Vector3 AimOrigin => netAimOrigin.Value;
     public Vector3 AimDirection => netAimDirection.Value;
 
@@ -89,12 +96,21 @@ public class NetworkPlayer : NetworkBehaviour
         if (IsServer)
         {
             lastCheckedPosition = transform.position;
+            if (string.IsNullOrEmpty(serverVoiceChannel))
+            {
+                serverVoiceChannel = "nsc" + Guid.NewGuid().ToString("N");
+            }
+            voiceChannel.Value = new FixedString64Bytes(serverVoiceChannel);
         }
     }
 
     public override void OnNetworkDespawn()
     {
         allPlayers.Remove(this);
+        if (IsServer && allPlayers.Count == 0)
+        {
+            serverVoiceChannel = null; // next hosted session gets a fresh channel
+        }
         if (Local == this)
         {
             Local = null;
@@ -112,7 +128,7 @@ public class NetworkPlayer : NetworkBehaviour
         controller.enabled = true;
         foreach (Behaviour behaviour in GetComponents<Behaviour>())
         {
-            if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter)
+            if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter || behaviour is PlayerVoice)
             {
                 behaviour.enabled = true;
             }

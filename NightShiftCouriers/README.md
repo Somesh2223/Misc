@@ -20,7 +20,7 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - [x] Networked flood (server timers, clients follow the water height) and delivery / money (server-authoritative)
 - [x] Networked Jal-Pishach (server AI, targets the nearest player in the water, tells shown on every client)
 - [x] Voice loudness -> monster noise (microphone level, toggle in the in-game panel)
-- [ ] Proximity voice chat itself (needs a voice plugin - see "Voice chat" below)
+- [x] Proximity voice chat with Vivox (needs the one-time setup in "Voice chat" below)
 - [ ] Playtest with 2-4 real players (the M2 test: "can a crew finish a shift without desyncs?")
 
 ## How multiplayer works (read this first)
@@ -116,15 +116,26 @@ The host forwards UDP port 7777 on their router, and the joiner types the host's
 - Host: **Host Steam lobby**. Joiner: **Find Steam lobbies**, click the lobby. Friends can also use Steam's "Join Game".
 - Steam support compiles only when the `com.community.netcode.transport.facepunch` package is installed and on Windows / Mac / Linux. Anywhere else the Steam buttons are replaced by a note and direct IP still works.
 
-## Voice chat (not done yet - needs your decision)
-Voice **transmission** needs a plugin and neither can be added from this environment:
-- **Dissonance Voice Chat** (Asset Store, paid): best proximity-voice support for Netcode; import it, then add the Dissonance comms object and a `DissonancePlayer` on the player prefab.
-- **Vivox** (Unity Gaming Services, free tier): install `com.unity.services.vivox`, link the project to a UGS project, and use positional channels.
-Everything on the game side is ready: `MicNoiseReporter` already turns loudness into monster-audible noise, and the NetworkPlayer position can feed the plugin's 3D positioning.
+## Voice chat (Vivox)
+Proximity voice uses **Vivox** (Unity Gaming Services). One positional channel per crew: voices get quieter with distance
+and cut off beyond 32 m (tunable on `VoiceChatService`). Players join automatically when they spawn.
+
+**One-time setup** (cannot be done from code, and no keys are stored in this repo):
+1. Unity Hub / Editor: sign in, then **Edit > Project Settings > Services** and link the project to a Unity Cloud project.
+2. In the Unity Cloud dashboard for that project, open **Vivox** and click **Get started** (free tier).
+3. Press Play in `City_Greybox`. The right-hand panel shows `Voice: connected` when it works, or the reason it failed.
+
+**Controls:** the **Mic** button in the right-hand panel cycles *OpenMic -> PushToTalk (hold V) -> Muted*.
+
+**Voice makes noise:** while Vivox is connected, how loudly you speak (Vivox's own speech level) is reported to the server
+as noise that monsters can hear. Tune `Vivox Level Scale` on `MicNoiseReporter` if normal speech is too quiet or too loud
+for the monster. If Vivox is not set up, the old "Mic noise only" button still measures the raw microphone instead.
+
+**Not done:** voices are not muffled underwater or through walls yet (plan 4.12), and the radio item (long range channel) is Milestone 3.
 
 ## Known issues
 - All code was written without a Unity editor available, so it has never been compiled or run. Expect to fix small compile or API errors on first open.
-- **Package versions are unverified**: the registry was not reachable while writing this. `com.unity.netcode.gameobjects` is pinned to 2.1.1; if Unity says that version does not exist, pick the newest 2.x in Package Manager. The Facepunch transport is pinned to a git commit and was written for NGO 1.x; if it does not compile against NGO 2.x, update it or tell me the errors.
+- **Package versions are unverified**: the registry was not reachable while writing this. Vivox is pinned to 16.7.0 and Authentication to 3.4.0 (the Vivox calls were written from its documented API without being able to read the docs page; the `Channel3DProperties` constructor argument order is the likeliest thing to need a fix). `com.unity.netcode.gameobjects` is pinned to 2.1.1; if Unity says that version does not exist, pick the newest 2.x in Package Manager. The Facepunch transport is pinned to a git commit and was written for NGO 1.x; if it does not compile against NGO 2.x, update it or tell me the errors.
 - If the console shows duplicate network prefab warnings, delete the auto-generated `DefaultNetworkPrefabs` list (the game registers its prefabs in `GameNetworkConfig`).
 - Network RPCs use the classic `[ServerRpc]` / `[ClientRpc]` attributes; NGO 2.x may show deprecation warnings for them (harmless).
 - Remote players have no collider, so packages and monsters pass through other players for now.

@@ -8,6 +8,8 @@ public class MicNoiseReporter : MonoBehaviour
 {
     [SerializeField, Tooltip("Start with the microphone on. The in-game panel can toggle it.")]
     private bool useMicrophone = false;
+    [SerializeField, Tooltip("Vivox reports speech energy on a different scale than the raw microphone. Tune this so normal speech lands around 0.1.")]
+    private float vivoxLevelScale = 0.5f;
     [SerializeField, Tooltip("Microphone level (0-1) below this counts as silence.")]
     private float silenceLevel = 0.02f;
     [SerializeField, Tooltip("Noise loudness when talking at level 0.1 (a normal speaking voice).")]
@@ -81,14 +83,31 @@ public class MicNoiseReporter : MonoBehaviour
         }
     }
 
+    // True while the level comes from Vivox (the voice chat owns the microphone then).
+    public bool UsingVoiceChat { get; private set; }
+
     private void Update()
     {
-        if (micClip == null)
+        // With voice chat running, Vivox owns the microphone: use its speech level and keep Unity's microphone off.
+        VoiceChatService voice = VoiceChatService.Instance;
+        UsingVoiceChat = voice != null && voice.IsConnected;
+        if (UsingVoiceChat)
         {
-            return;
+            StopMic();
+            CurrentLevel = voice.LocalLevel * vivoxLevelScale;
         }
-
-        CurrentLevel = MeasureLevel();
+        else
+        {
+            if (useMicrophone)
+            {
+                StartMic();
+            }
+            if (micClip == null)
+            {
+                return;
+            }
+            CurrentLevel = MeasureLevel();
+        }
 
         timer -= Time.deltaTime;
         if (timer > 0f || CurrentLevel < silenceLevel)
