@@ -48,6 +48,7 @@ public static class CityGreyboxSceneBuilder
         SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(false), false, false, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
+        SceneBuildHelpers.AddSceneToBuild(ScenePath);
         Debug.Log("Created " + ScenePath);
     }
 

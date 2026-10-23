@@ -32,6 +32,7 @@ public static class TestPlayerSceneBuilder
         SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, false, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
+        SceneBuildHelpers.AddSceneToBuild(ScenePath);
         Debug.Log("Created " + ScenePath + ". Press Play, then WASD / Shift / Ctrl / Space.");
     }
 

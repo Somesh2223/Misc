@@ -52,6 +52,7 @@ public static class TestJalPishachSceneBuilder
         SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
+        SceneBuildHelpers.AddSceneToBuild(ScenePath);
         Debug.Log("Created " + ScenePath);
     }
 }

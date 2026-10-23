@@ -40,6 +40,7 @@ public static class TestPackagesSceneBuilder
         SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
+        SceneBuildHelpers.AddSceneToBuild(ScenePath);
         Debug.Log("Created " + ScenePath);
     }
 }

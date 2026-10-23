@@ -363,7 +363,13 @@ public static class SceneBuildHelpers
     public static void MakeNetworkSetup(NetworkPrefabs prefabs, FloodSettings flood, bool autoHost, bool autoStartShift, int quota)
     {
         GameObject manager = new GameObject("NetworkManager");
-        manager.AddComponent<NetworkManager>();
+        NetworkManager networkManager = manager.AddComponent<NetworkManager>();
+        // Everything is spawned at run time, so Netcode's scene synchronisation is not used
+        // (GameNetworkConfig also switches it off when the game starts).
+        if (networkManager.NetworkConfig != null)
+        {
+            networkManager.NetworkConfig.EnableSceneManagement = false;
+        }
         manager.AddComponent<UnityTransport>();
         GameNetworkConfig config = manager.AddComponent<GameNetworkConfig>();
         NetworkBootstrap bootstrap = manager.AddComponent<NetworkBootstrap>();
@@ -399,6 +405,24 @@ public static class SceneBuildHelpers
         spawnerSo.FindProperty("quota").intValue = quota;
         spawnerSo.FindProperty("autoStartShift").boolValue = autoStartShift;
         spawnerSo.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // Adds a saved scene to File > Build Profiles so builds (and Netcode) can find it.
+    public static void AddSceneToBuild(string scenePath)
+    {
+        EditorBuildSettingsScene[] current = EditorBuildSettings.scenes;
+        foreach (EditorBuildSettingsScene existing in current)
+        {
+            if (existing.path == scenePath)
+            {
+                return;
+            }
+        }
+
+        EditorBuildSettingsScene[] updated = new EditorBuildSettingsScene[current.Length + 1];
+        current.CopyTo(updated, 0);
+        updated[current.Length] = new EditorBuildSettingsScene(scenePath, true);
+        EditorBuildSettings.scenes = updated;
     }
 
     // Switch to the new Input System if the project is still on the old one.
