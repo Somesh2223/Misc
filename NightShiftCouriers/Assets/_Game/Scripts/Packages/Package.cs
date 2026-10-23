@@ -5,6 +5,8 @@ using UnityEngine;
 public class Package : MonoBehaviour
 {
     [SerializeField] private PackageData data;
+    [SerializeField, Tooltip("Address this package must be delivered to (matches a DeliveryPoint).")]
+    private string destinationAddress = "";
 
     [Header("Buoyancy")]
     [SerializeField, Tooltip("Packages lighter than this (kg) float; heavier ones sink.")]
@@ -25,6 +27,7 @@ public class Package : MonoBehaviour
     private float timeCreated;
 
     public PackageData Data => data;
+    public string DestinationAddress => destinationAddress;
     public Rigidbody Body => body;
     public bool IsHeld => isHeld;
     public bool IsDelivered => isDelivered;
@@ -47,6 +50,11 @@ public class Package : MonoBehaviour
             }
             return result;
         }
+    }
+
+    public void SetDestination(string address)
+    {
+        destinationAddress = address;
     }
 
     // Lets spawners assign data before Awake runs.

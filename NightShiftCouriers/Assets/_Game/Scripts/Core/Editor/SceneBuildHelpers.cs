@@ -145,7 +145,7 @@ public static class SceneBuildHelpers
         return GetOrCreatePackageData("Package_WetSensitive", "Documents (keep dry)", 150, 1.5f, false, true);
     }
 
-    public static Package MakePackage(PackageData data, Vector3 position, Color color)
+    public static Package MakePackage(PackageData data, Vector3 position, Color color, string destination = "")
     {
         GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
         box.name = "Package - " + data.displayName;
@@ -155,6 +155,7 @@ public static class SceneBuildHelpers
         ColorObject(box, color);
         Package package = box.AddComponent<Package>();
         package.SetData(data);
+        package.SetDestination(destination);
         return package;
     }
 
@@ -225,13 +226,13 @@ public static class SceneBuildHelpers
         return manager;
     }
 
-    // Stairs of 0.3 m steps (matches the CharacterController step offset) rising along +Z.
-    public static void MakeStairs(string name, Vector3 startBottom, float width, int steps)
+    // Stairs of 0.3 m steps (matches the CharacterController step offset) along +Z, rising (or falling if descending).
+    public static void MakeStairs(string name, Vector3 startBottom, float width, int steps, bool descending = false)
     {
         GameObject parent = new GameObject(name);
         for (int i = 0; i < steps; i++)
         {
-            float height = 0.3f * (i + 1);
+            float height = descending ? 0.3f * (steps - i) : 0.3f * (i + 1);
             GameObject step = MakeBlock("Step " + (i + 1),
                 startBottom + new Vector3(0f, height / 2f, 1f * i + 0.5f),
                 new Vector3(width, height, 1f), parent.transform);
@@ -273,5 +274,41 @@ public static class SceneBuildHelpers
             new GameObject("MonsterDebugHUD").AddComponent<MonsterDebugHUD>();
         }
         return monster;
+    }
+
+    // A glowing marker zone where packages are delivered.
+    public static DeliveryPoint MakeDeliveryPoint(string address, Vector3 groundPosition, Vector3 size)
+    {
+        GameObject zone = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        zone.name = "Delivery: " + address;
+        zone.transform.position = groundPosition + new Vector3(0f, size.y / 2f, 0f);
+        zone.transform.localScale = size;
+        Object.DestroyImmediate(zone.GetComponent<BoxCollider>());
+        zone.AddComponent<BoxCollider>().isTrigger = true;
+        ColorObject(zone, new Color(0.2f, 1f, 0.4f, 1f));
+
+        DeliveryPoint point = zone.AddComponent<DeliveryPoint>();
+        SerializedObject so = new SerializedObject(point);
+        so.FindProperty("address").stringValue = address;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        return point;
+    }
+
+    // DeliveryManager + wallet + HUD. Call after MakePlayer so the HUD can find the grabber.
+    public static DeliveryManager MakeDeliveryManager(int quota)
+    {
+        GameObject root = new GameObject("Deliveries");
+        DeliveryManager manager = root.AddComponent<DeliveryManager>();
+        DeliveryHUD hud = root.AddComponent<DeliveryHUD>();
+
+        SerializedObject managerSo = new SerializedObject(manager);
+        managerSo.FindProperty("quota").intValue = quota;
+        managerSo.ApplyModifiedPropertiesWithoutUndo();
+
+        SerializedObject hudSo = new SerializedObject(hud);
+        hudSo.FindProperty("manager").objectReferenceValue = manager;
+        hudSo.FindProperty("grabber").objectReferenceValue = Object.FindFirstObjectByType<PlayerGrabber>();
+        hudSo.ApplyModifiedPropertiesWithoutUndo();
+        return manager;
     }
 }
