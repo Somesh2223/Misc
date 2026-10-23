@@ -1,15 +1,17 @@
 using System.Collections.Generic;
+using System.Text;
+using Unity.Collections;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.SceneManagement;
 
-// Tracks the night's orders: pick up -> deliver -> get paid (Milestone 1 delivery loop).
-// Orders are built from every Package in the scene that has a destination address.
-public class DeliveryManager : MonoBehaviour
+// Tracks the night's orders: pick up -> deliver -> get paid. SERVER-authoritative (plan section 5):
+// money, payouts and orders are decided on the server and copied to every player's HUD.
+public class DeliveryManager : NetworkBehaviour
 {
+    public static DeliveryManager Instance { get; private set; }
+
     [Header("Payout")]
-    [SerializeField, Tooltip("Money needed by the end of the shift to meet the quota.")]
-    private int quota = 400;
     [SerializeField, Tooltip("Deliver faster than this many seconds for a speed bonus.")]
     private float parSeconds = 240f;
     [SerializeField, Tooltip("Largest speed bonus (0.25 = +25%).")]
@@ -19,61 +21,91 @@ public class DeliveryManager : MonoBehaviour
     [SerializeField, Tooltip("Packages that fall below this height are counted as lost.")]
     private float killHeight = -20f;
 
+    private readonly NetworkVariable<int> money = new NetworkVariable<int>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<int> quota = new NetworkVariable<int>(
+        400, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<bool> shiftOver = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<FixedString512Bytes> orderSummary = new NetworkVariable<FixedString512Bytes>(
+        default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
     private readonly List<DeliveryOrder> orders = new List<DeliveryOrder>();
-    private MoneyWallet wallet;
+    private int pendingQuota = 400;
     private string lastMessage = "";
     private float messageTimer;
-    private bool shiftOver;
 
-    public IReadOnlyList<DeliveryOrder> Orders => orders;
-    public int Quota => quota;
-    public int Money => wallet.Balance;
-    public bool ShiftOver => shiftOver;
-    public bool QuotaMet => wallet.Balance >= quota;
+    public int Quota => quota.Value;
+    public int Money => money.Value;
+    public bool ShiftOver => shiftOver.Value;
+    public bool QuotaMet => money.Value >= quota.Value;
+    public string OrderSummary => orderSummary.Value.ToString();
     public string Message => messageTimer > 0f ? lastMessage : "";
 
-    private void Awake()
+    // Server: call before Spawn().
+    public void ServerInit(int quotaAmount)
     {
-        wallet = GetComponent<MoneyWallet>();
-        if (wallet == null)
+        pendingQuota = quotaAmount;
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        Instance = this;
+        if (IsServer)
         {
-            wallet = gameObject.AddComponent<MoneyWallet>();
+            quota.Value = pendingQuota;
+            money.Value = 0;
+            shiftOver.Value = false;
         }
     }
 
-    private void Start()
+    public override void OnNetworkDespawn()
     {
-        Package[] packages = FindObjectsByType<Package>(FindObjectsSortMode.None);
-        foreach (Package package in packages)
+        if (Instance == this)
         {
-            if (string.IsNullOrEmpty(package.DestinationAddress))
-            {
-                continue;
-            }
-
-            DeliveryOrder order = new DeliveryOrder();
-            order.package = package;
-            order.address = package.DestinationAddress;
-            order.packageName = package.Data.displayName;
-            orders.Add(order);
+            Instance = null;
         }
+    }
+
+    // ---------- Server ----------
+
+    // The shift spawner calls this for every package it creates.
+    public void ServerRegisterPackage(Package package)
+    {
+        if (!IsServer || string.IsNullOrEmpty(package.DestinationAddress))
+        {
+            return;
+        }
+
+        DeliveryOrder order = new DeliveryOrder();
+        order.package = package;
+        order.address = package.DestinationAddress;
+        order.packageName = package.Data.displayName;
+        orders.Add(order);
+        RebuildSummary();
     }
 
     private void Update()
     {
         messageTimer -= Time.deltaTime;
 
+        if (!IsServer || !IsSpawned)
+        {
+            return;
+        }
+
         CheckForLostPackages();
         CheckShiftOver();
 
-        if (shiftOver && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
+        if (shiftOver.Value && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame
+            && ShiftSpawner.Instance != null)
         {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            ShiftSpawner.Instance.RestartShift();
         }
     }
 
-    // Called by a DeliveryPoint when a loose package sits inside it.
-    public void TryDeliver(Package package, DeliveryPoint point)
+    // Called by a DeliveryPoint when a loose package sits inside it (server only).
+    public void ServerTryDeliver(Package package, DeliveryPoint point)
     {
         DeliveryOrder order = FindOrder(package);
         if (order == null || order.status != OrderStatus.Pending)
@@ -83,19 +115,19 @@ public class DeliveryManager : MonoBehaviour
 
         if (order.address != point.Address)
         {
-            ShowMessage("Wrong address! This one goes to " + order.address + ".");
+            MessageClientRpc(new FixedString128Bytes("Wrong address! This one goes to " + order.address + "."));
             return;
         }
 
         int payout = CalculatePayout(package);
         order.status = OrderStatus.Delivered;
         order.payout = payout;
-        package.MarkDelivered();
-        wallet.Add(payout);
+        money.Value += payout;
         GameEvents.RaisePackageDelivered(package, payout);
+        MessageClientRpc(new FixedString128Bytes("Delivered to " + order.address + "!  +" + payout));
 
-        ShowMessage("Delivered to " + order.address + "!  +" + payout);
-        Destroy(package.gameObject, 0.3f);
+        package.ServerMarkDelivered();
+        RebuildSummary();
     }
 
     // Money = base value x condition x speed bonus (plan section 4.15).
@@ -107,13 +139,6 @@ public class DeliveryManager : MonoBehaviour
         float speedBonus = 1f + maxSpeedBonus * timeLeftFraction;
 
         return Mathf.RoundToInt(value * speedBonus);
-    }
-
-    // The address of the held package, if any (used by the HUD).
-    public string FindAddressFor(Package package)
-    {
-        DeliveryOrder order = FindOrder(package);
-        return order == null ? "" : order.address;
     }
 
     private DeliveryOrder FindOrder(Package package)
@@ -130,6 +155,7 @@ public class DeliveryManager : MonoBehaviour
 
     private void CheckForLostPackages()
     {
+        bool changed = false;
         foreach (DeliveryOrder order in orders)
         {
             if (order.status != OrderStatus.Pending)
@@ -137,23 +163,29 @@ public class DeliveryManager : MonoBehaviour
                 continue;
             }
 
-            bool gone = order.package == null;
+            bool gone = order.package == null || !order.package.IsSpawned;
             bool fellOut = !gone && order.package.transform.position.y < killHeight;
             if (gone || fellOut)
             {
                 order.status = OrderStatus.Lost;
                 if (fellOut)
                 {
-                    Destroy(order.package.gameObject);
+                    order.package.ServerDespawn();
                 }
-                ShowMessage("A package was lost!");
+                MessageClientRpc(new FixedString128Bytes("A package was lost!"));
+                changed = true;
             }
+        }
+
+        if (changed)
+        {
+            RebuildSummary();
         }
     }
 
     private void CheckShiftOver()
     {
-        if (shiftOver || orders.Count == 0)
+        if (shiftOver.Value || orders.Count == 0)
         {
             return;
         }
@@ -165,12 +197,35 @@ public class DeliveryManager : MonoBehaviour
                 return;
             }
         }
-        shiftOver = true;
+        shiftOver.Value = true;
     }
 
-    private void ShowMessage(string text)
+    private void RebuildSummary()
     {
-        lastMessage = text;
+        StringBuilder text = new StringBuilder();
+        foreach (DeliveryOrder order in orders)
+        {
+            text.Append(order.packageName).Append(" -> ").Append(order.address).Append("  [").Append(order.status);
+            if (order.status == OrderStatus.Delivered)
+            {
+                text.Append(" +").Append(order.payout);
+            }
+            text.Append("]\n");
+        }
+
+        // FixedString512 holds ~500 bytes; cut the text rather than throw if there are many orders.
+        string result = text.ToString();
+        if (result.Length > 450)
+        {
+            result = result.Substring(0, 450);
+        }
+        orderSummary.Value = new FixedString512Bytes(result);
+    }
+
+    [ClientRpc]
+    private void MessageClientRpc(FixedString128Bytes text)
+    {
+        lastMessage = text.ToString();
         messageTimer = 4f;
     }
 }

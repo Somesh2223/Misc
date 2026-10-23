@@ -3,32 +3,28 @@ using UnityEngine;
 // Debug HUD for the delivery loop: money, quota, order list, and where the held package goes.
 public class DeliveryHUD : MonoBehaviour
 {
-    [SerializeField] private DeliveryManager manager;
-    [SerializeField] private PlayerGrabber grabber;
-
     private void OnGUI()
     {
+        DeliveryManager manager = DeliveryManager.Instance;
         if (manager == null)
         {
             return;
         }
 
-        string text = "Money: " + manager.Money + " / Quota " + manager.Quota + "\nOrders:\n";
-        foreach (DeliveryOrder order in manager.Orders)
-        {
-            string status = order.status.ToString();
-            if (order.status == OrderStatus.Delivered)
-            {
-                status += " +" + order.payout;
-            }
-            text += "  " + order.packageName + " -> " + order.address + "  [" + status + "]\n";
-        }
-        GUI.Label(new Rect(20, 110, 450, 200), text);
+        string text = "Money: " + manager.Money + " / Quota " + manager.Quota + "\nOrders:\n" + manager.OrderSummary;
+        GUI.Label(new Rect(20, 110, 480, 200), text);
 
+        NetworkPlayer local = NetworkPlayer.Local;
+        PlayerGrabber grabber = local != null ? local.GetComponent<PlayerGrabber>() : null;
         if (grabber != null && grabber.IsHolding)
         {
-            string address = manager.FindAddressFor(grabber.HeldPackage);
+            Package held = grabber.HeldPackage;
+            string address = held != null ? held.DestinationAddress : "";
             string hint = address == "" ? "Holding a package" : "Holding package for: " + address;
+            if (held != null && held.Data != null && held.Data.holdersRequired > 1)
+            {
+                hint += "  (needs 2 players to lift)";
+            }
             GUI.Label(new Rect(Screen.width / 2 - 200, Screen.height - 120, 400, 30), hint);
         }
 
@@ -48,7 +44,7 @@ public class DeliveryHUD : MonoBehaviour
             big.alignment = TextAnchor.MiddleCenter;
             string result = manager.QuotaMet ? "SHIFT COMPLETE - QUOTA MET" : "SHIFT OVER - QUOTA MISSED";
             GUI.Label(new Rect(0, 0, Screen.width, Screen.height),
-                result + "\nEarned " + manager.Money + " / " + manager.Quota + "\nPress R to restart", big);
+                result + "\nEarned " + manager.Money + " / " + manager.Quota + "\nHost: press R to restart", big);
         }
     }
 }

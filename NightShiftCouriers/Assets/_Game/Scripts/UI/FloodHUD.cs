@@ -4,7 +4,6 @@ using UnityEngine;
 // set showTimer to false later and only the warning text stays.
 public class FloodHUD : MonoBehaviour
 {
-    [SerializeField] private FloodManager flood;
     [SerializeField] private bool showTimer = true;
     [SerializeField, Tooltip("Seconds the warning message stays on screen.")]
     private float warningDisplaySeconds = 8f;
@@ -46,6 +45,7 @@ public class FloodHUD : MonoBehaviour
 
     private void OnGUI()
     {
+        FloodManager flood = FloodManager.Instance;
         if (flood == null)
         {
             return;
@@ -57,7 +57,7 @@ public class FloodHUD : MonoBehaviour
                           + "\nWater height: " + flood.CurrentWaterHeight.ToString("0.00") + " m";
             if (!flood.IsLastStage)
             {
-                text += "\nNext rise in: " + Mathf.CeilToInt(flood.SecondsUntilNextRise) + " s   (N = skip)";
+                text += "\nNext rise in: " + Mathf.CeilToInt(flood.SecondsUntilNextRise) + " s   (host: N = skip)";
             }
             GUI.Label(new Rect(20, 20, 400, 80), text);
         }

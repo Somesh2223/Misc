@@ -9,9 +9,30 @@ public class WaterVolume : MonoBehaviour
 {
     private static readonly List<WaterVolume> allWater = new List<WaterVolume>();
 
+    [SerializeField, Tooltip("Unique number per scene so the network can refer to this water.")]
+    private int waterId;
+    [SerializeField, Tooltip("If true, the flood raises and lowers this water.")]
+    private bool followsFlood;
+
     private Collider area;
 
+    public static IReadOnlyList<WaterVolume> All => allWater;
+
+    public int WaterId => waterId;
+    public bool FollowsFlood => followsFlood;
     public float SurfaceHeight => transform.position.y;
+
+    public static WaterVolume FindById(int id)
+    {
+        foreach (WaterVolume water in allWater)
+        {
+            if (water.waterId == id)
+            {
+                return water;
+            }
+        }
+        return null;
+    }
 
     // Horizontal extent of the water (world space).
     public Bounds Area

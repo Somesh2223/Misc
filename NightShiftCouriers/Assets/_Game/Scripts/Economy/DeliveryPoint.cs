@@ -1,7 +1,9 @@
+using Unity.Netcode;
 using UnityEngine;
 
 // A marked door/zone. Drop a package inside it (let go of it) to deliver.
 // Needs a trigger Collider. The address text must match the package's destination.
+// Only the server decides deliveries.
 [RequireComponent(typeof(Collider))]
 public class DeliveryPoint : MonoBehaviour
 {
@@ -9,31 +11,25 @@ public class DeliveryPoint : MonoBehaviour
 
     public string Address => address;
 
-    private DeliveryManager manager;
-
     private void Awake()
     {
         GetComponent<Collider>().isTrigger = true;
     }
 
-    private void Start()
-    {
-        manager = FindFirstObjectByType<DeliveryManager>();
-    }
-
     private void OnTriggerStay(Collider other)
     {
-        if (manager == null)
+        NetworkManager network = NetworkManager.Singleton;
+        if (network == null || !network.IsServer || DeliveryManager.Instance == null)
         {
             return;
         }
 
         Package package = other.GetComponentInParent<Package>();
-        if (package == null || package.IsHeld || package.IsDelivered)
+        if (package == null || !package.IsSpawned || package.IsHeld || package.IsDelivered)
         {
             return;
         }
 
-        manager.TryDeliver(package, this);
+        DeliveryManager.Instance.ServerTryDeliver(package, this);
     }
 }

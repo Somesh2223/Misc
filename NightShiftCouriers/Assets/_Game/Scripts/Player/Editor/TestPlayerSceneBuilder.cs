@@ -12,6 +12,7 @@ public static class TestPlayerSceneBuilder
     public static void Build()
     {
         SceneBuildHelpers.EnableNewInputSystem();
+        SceneBuildHelpers.NetworkPrefabs prefabs = SceneBuildHelpers.BuildNetworkPrefabs();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
         SceneBuildHelpers.MakeBlock("Floor", new Vector3(0f, -0.5f, 0f), new Vector3(70f, 1f, 70f));
@@ -27,7 +28,8 @@ public static class TestPlayerSceneBuilder
         // Shallow puddle for wading (0.5 m deep)
         SceneBuildHelpers.MakeWater("Shallow Water", new Vector3(-18f, 0.5f, 0f), 10f, 10f);
 
-        SceneBuildHelpers.MakePlayer(new Vector3(0f, 0.1f, -8f));
+        SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -8f));
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, false, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         Debug.Log("Created " + ScenePath + ". Press Play, then WASD / Shift / Ctrl / Space.");

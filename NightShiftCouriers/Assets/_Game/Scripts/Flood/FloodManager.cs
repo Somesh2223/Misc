@@ -1,65 +1,104 @@
 using System.Collections.Generic;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// The flood clock. Moves the water up through stages and raises events for the HUD, audio and monsters.
-// Single-player for now; in Milestone 2 only the server will run this.
-public class FloodManager : MonoBehaviour
+// The flood clock (section 4.3). SERVER-authoritative: only the server runs the timers.
+// Clients receive the stage and the water height and move their local water to match.
+public class FloodManager : NetworkBehaviour
 {
-    [SerializeField] private FloodSettings settings;
+    public static FloodManager Instance { get; private set; }
 
-    [SerializeField, Tooltip("Water volumes that rise with the flood.")]
-    private List<WaterVolume> floodWaters = new List<WaterVolume>();
+    private FloodSettings settings => GameNetworkConfig.Instance.FloodSettings;
 
     [Header("Debug")]
-    [SerializeField, Tooltip("Press N to jump to the next stage while testing.")]
+    [SerializeField, Tooltip("Host only: press N to jump to the next stage while testing.")]
     private bool allowDebugKeys = true;
 
-    private int stageIndex;
+    [SerializeField, Tooltip("How quickly clients catch up to the server's water height.")]
+    private float clientFollowSpeed = 8f;
+
+    private readonly NetworkVariable<int> stage = new NetworkVariable<int>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<float> waterHeight = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<int> secondsUntilRise = new NetworkVariable<int>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+    private readonly List<WaterVolume> floodWaters = new List<WaterVolume>();
     private float stageTimer;
     private bool warned;
-    private bool rising;
 
-    public int StageIndex => stageIndex;
+    public int StageIndex => stage.Value;
     public int StageCount => settings.stages.Length;
-    public string StageName => settings.stages[stageIndex].name;
-    public bool IsLastStage => stageIndex >= settings.stages.Length - 1;
-    public bool IsRising => rising;
+    public string StageName => settings.stages[Mathf.Clamp(stage.Value, 0, settings.stages.Length - 1)].name;
+    public bool IsLastStage => stage.Value >= settings.stages.Length - 1;
+    public float SecondsUntilNextRise => IsLastStage ? 0f : secondsUntilRise.Value;
+    public float CurrentWaterHeight => waterHeight.Value;
 
-    // Seconds until the next rise starts (or 0 on the last stage).
-    public float SecondsUntilNextRise
+    public override void OnNetworkSpawn()
     {
-        get
+        Instance = this;
+
+        foreach (WaterVolume water in WaterVolume.All)
         {
-            if (IsLastStage)
+            if (water.FollowsFlood)
             {
-                return 0f;
+                floodWaters.Add(water);
             }
-            return Mathf.Max(0f, stageTimer);
+        }
+
+        if (IsServer)
+        {
+            stage.Value = 0;
+            stageTimer = settings.stages[0].duration;
+            waterHeight.Value = settings.stages[0].waterHeight;
+            secondsUntilRise.Value = Mathf.CeilToInt(stageTimer);
+            SetWaterHeightInstantly(waterHeight.Value);
+        }
+        else
+        {
+            SetWaterHeightInstantly(waterHeight.Value);
+        }
+
+        stage.OnValueChanged += OnStageChanged;
+        GameEvents.RaiseFloodStageChanged(stage.Value);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        stage.OnValueChanged -= OnStageChanged;
+        if (Instance == this)
+        {
+            Instance = null;
         }
     }
 
-    public float CurrentWaterHeight
+    private void OnStageChanged(int previous, int current)
     {
-        get
-        {
-            if (floodWaters.Count == 0)
-            {
-                return 0f;
-            }
-            return floodWaters[0].SurfaceHeight;
-        }
-    }
-
-    private void Start()
-    {
-        stageIndex = 0;
-        stageTimer = settings.stages[0].duration;
-        SetWaterHeightInstantly(settings.stages[0].waterHeight);
-        GameEvents.RaiseFloodStageChanged(stageIndex);
+        GameEvents.RaiseFloodStageChanged(current);
     }
 
     private void Update()
+    {
+        if (!IsSpawned)
+        {
+            return;
+        }
+
+        if (IsServer)
+        {
+            ServerUpdate();
+        }
+        else
+        {
+            FollowServerHeight();
+        }
+    }
+
+    // ---------- Server ----------
+
+    private void ServerUpdate()
     {
         if (allowDebugKeys && Keyboard.current != null && Keyboard.current.nKey.wasPressedThisFrame)
         {
@@ -74,11 +113,12 @@ public class FloodManager : MonoBehaviour
         }
 
         stageTimer -= Time.deltaTime;
+        secondsUntilRise.Value = Mathf.Max(0, Mathf.CeilToInt(stageTimer));
 
         if (!warned && stageTimer <= settings.warningSeconds)
         {
             warned = true;
-            GameEvents.RaiseFloodWarning(stageIndex + 1, Mathf.Max(0f, stageTimer));
+            WarningClientRpc(stage.Value + 1, Mathf.Max(0f, stageTimer));
         }
 
         if (stageTimer <= 0f)
@@ -94,26 +134,40 @@ public class FloodManager : MonoBehaviour
             return;
         }
 
-        stageIndex++;
-        stageTimer = settings.stages[stageIndex].duration;
+        stage.Value++;
+        stageTimer = settings.stages[stage.Value].duration;
         warned = false;
-        GameEvents.RaiseFloodStageChanged(stageIndex);
     }
 
     private void MoveWaterTowardTarget()
     {
-        float target = settings.stages[stageIndex].waterHeight;
-        rising = false;
+        float target = settings.stages[stage.Value].waterHeight;
+        float current = waterHeight.Value;
+        if (Mathf.Approximately(current, target))
+        {
+            return;
+        }
 
+        float next = Mathf.MoveTowards(current, target, settings.riseSpeed * Time.deltaTime);
+        waterHeight.Value = next;
+        SetWaterHeightInstantly(next);
+    }
+
+    [ClientRpc]
+    private void WarningClientRpc(int nextStage, float secondsLeft)
+    {
+        GameEvents.RaiseFloodWarning(nextStage, secondsLeft);
+    }
+
+    // ---------- Clients ----------
+
+    private void FollowServerHeight()
+    {
         foreach (WaterVolume water in floodWaters)
         {
             Vector3 position = water.transform.position;
-            if (!Mathf.Approximately(position.y, target))
-            {
-                rising = true;
-                position.y = Mathf.MoveTowards(position.y, target, settings.riseSpeed * Time.deltaTime);
-                water.transform.position = position;
-            }
+            position.y = Mathf.Lerp(position.y, waterHeight.Value, clientFollowSpeed * Time.deltaTime);
+            water.transform.position = position;
         }
     }
 

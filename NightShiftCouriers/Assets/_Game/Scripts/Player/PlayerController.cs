@@ -59,6 +59,7 @@ public class PlayerController : MonoBehaviour
     private PlayerInputReader input;
     private PlayerStamina stamina;
     private PlayerGrabber grabber; // optional
+    private PlayerHealth health;   // optional
 
     private Vector3 horizontalVelocity;
     private float verticalVelocity;
@@ -75,6 +76,7 @@ public class PlayerController : MonoBehaviour
     public float WaterDepth => waterDepth;
     public bool IsGrounded => controller.isGrounded;
     public float CurrentSpeed => horizontalVelocity.magnitude;
+    public float Pitch => lookPitch;
 
     private void Awake()
     {
@@ -82,6 +84,7 @@ public class PlayerController : MonoBehaviour
         input = GetComponent<PlayerInputReader>();
         stamina = GetComponent<PlayerStamina>();
         grabber = GetComponent<PlayerGrabber>();
+        health = GetComponent<PlayerHealth>();
     }
 
     private void Start()
@@ -90,6 +93,18 @@ public class PlayerController : MonoBehaviour
         controller.center = new Vector3(0f, standingHeight / 2f, 0f);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+    }
+
+    // Moves the player instantly (spawning, respawning, server snap-back).
+    public void Teleport(Vector3 position, float yaw)
+    {
+        controller.enabled = false;
+        transform.position = position;
+        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        controller.enabled = true;
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+        externalVelocity = Vector3.zero;
     }
 
     // Gives the player a push (e.g. a monster dragging them down). Fades out quickly.
@@ -102,6 +117,12 @@ public class PlayerController : MonoBehaviour
     {
         externalVelocity = Vector3.MoveTowards(externalVelocity, Vector3.zero, 6f * Time.deltaTime);
         HandleCursorToggle();
+
+        if (health != null && health.IsDead)
+        {
+            return; // no moving while dead
+        }
+
         UpdateWaterState();
         HandleLook();
         HandleCrouch();

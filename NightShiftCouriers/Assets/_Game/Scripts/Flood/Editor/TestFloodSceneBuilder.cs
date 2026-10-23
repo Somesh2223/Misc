@@ -12,6 +12,7 @@ public static class TestFloodSceneBuilder
     public static void Build()
     {
         SceneBuildHelpers.EnableNewInputSystem();
+        SceneBuildHelpers.NetworkPrefabs prefabs = SceneBuildHelpers.BuildNetworkPrefabs();
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
         SceneBuildHelpers.MakeBlock("Street", new Vector3(0f, -0.5f, 0f), new Vector3(80f, 1f, 80f));
@@ -26,12 +27,13 @@ public static class TestFloodSceneBuilder
         SceneBuildHelpers.MakeBlock("Rooftop Crate", new Vector3(2f, 3.3f, 20f), new Vector3(1f, 0.8f, 1f));
 
         // One package on the street
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetStandardPackageData(), new Vector3(3f, 0.3f, -5f), new Color(0.8f, 0.6f, 0.3f));
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(3f, 0.3f, -5f));
 
-        WaterVolume water = SceneBuildHelpers.MakeWater("Flood Water", new Vector3(0f, -0.5f, 0f), 80f, 80f);
-        SceneBuildHelpers.MakeFlood(SceneBuildHelpers.GetFloodSettings(true), water);
+        // The flood water rises with the flood (starts hidden below the street)
+        SceneBuildHelpers.MakeWater("Flood Water", new Vector3(0f, -0.5f, 0f), 80f, 80f, true);
 
-        SceneBuildHelpers.MakePlayer(new Vector3(0f, 0.1f, -10f));
+        SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -10f));
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         Debug.Log("Created " + ScenePath);

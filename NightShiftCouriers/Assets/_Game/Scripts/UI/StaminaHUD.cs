@@ -1,14 +1,19 @@
 using UnityEngine;
 
-// Minimal debug HUD: stamina bar plus the player's current state.
+// Minimal debug HUD for the local player: stamina bar plus current state.
 // Uses OnGUI so no Canvas setup is needed; real UI comes later.
 public class StaminaHUD : MonoBehaviour
 {
-    [SerializeField] private PlayerStamina stamina;
-    [SerializeField] private PlayerController player;
-
     private void OnGUI()
     {
+        NetworkPlayer local = NetworkPlayer.Local;
+        if (local == null)
+        {
+            return;
+        }
+
+        PlayerStamina stamina = local.GetComponent<PlayerStamina>();
+        PlayerController player = local.GetComponent<PlayerController>();
         if (stamina == null || player == null)
         {
             return;

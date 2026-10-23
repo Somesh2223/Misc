@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 
 // The Water Ghoul (section 4.6). Lives in deep water, hunts anything that splashes or swims.
@@ -6,7 +7,6 @@ using UnityEngine;
 public class JalPishach : MonsterBase
 {
     [Header("Water")]
-    [SerializeField] private WaterVolume homeWater;
     [SerializeField, Tooltip("The monster sleeps until the water surface is at least this high (world Y).")]
     private float minSurfaceHeight = 0.5f;
     [SerializeField, Tooltip("How far below the surface the body hides while stalking.")]
@@ -19,20 +19,42 @@ public class JalPishach : MonsterBase
     [SerializeField, Tooltip("Downward drag speed applied to the victim (m/s).")]
     private float dragDownSpeed = 5f;
 
+    [Header("Look")]
+    [SerializeField, Tooltip("Material used for the body and ripples (a URP Lit material).")]
+    private Material visualMaterial;
+
     [Header("Tell: ripples")]
     [SerializeField] private Color rippleColor = new Color(0.85f, 0.95f, 1f);
 
+    // Which WaterVolume it lives in (server decides at spawn, everyone looks it up by id).
+    private readonly NetworkVariable<int> homeWaterId = new NetworkVariable<int>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+    private int pendingHomeWaterId;
+    private WaterVolume homeWater;
     private Transform body;
     private Transform ripple;
     private Renderer[] bodyRenderers;
     private Renderer[] rippleRenderers;
     private float currentHeightOffset;
 
-    protected override void Start()
+    // Server: call before Spawn() to choose the water this monster lives in.
+    public void ServerSetHome(WaterVolume water)
     {
-        base.Start();
+        pendingHomeWaterId = water.WaterId;
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        if (IsServer)
+        {
+            homeWaterId.Value = pendingHomeWaterId;
+        }
+        homeWater = WaterVolume.FindById(homeWaterId.Value);
+
         BuildBody();
         BuildRipple();
+        base.OnNetworkSpawn();
     }
 
     // ---------- Visuals built in code so the monster needs no prefab ----------
@@ -45,7 +67,7 @@ public class JalPishach : MonsterBase
         visual.transform.SetParent(transform, false);
         visual.transform.localScale = new Vector3(0.8f, 0.5f, 0.8f);
         visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f); // lying flat
-        visual.GetComponent<Renderer>().material.color = new Color(0.1f, 0.15f, 0.12f);
+        visual.GetComponent<Renderer>().material = MakeMaterial(new Color(0.1f, 0.15f, 0.12f));
         body = visual.transform;
         bodyRenderers = new Renderer[] { visual.GetComponent<Renderer>() };
     }
@@ -62,6 +84,22 @@ public class JalPishach : MonsterBase
         rippleRenderers = root.GetComponentsInChildren<Renderer>();
     }
 
+    private Material MakeMaterial(Color color)
+    {
+        Material material;
+        if (visualMaterial != null)
+        {
+            material = new Material(visualMaterial);
+        }
+        else
+        {
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            material = new Material(shader != null ? shader : Shader.Find("Standard"));
+        }
+        material.color = color;
+        return material;
+    }
+
     private void MakeRippleArm(Transform parent, float angle)
     {
         GameObject arm = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -71,7 +109,7 @@ public class JalPishach : MonsterBase
         arm.transform.localRotation = Quaternion.Euler(0f, angle, 0f);
         // The slab's front end sits at the root, so the centre is half its length behind.
         arm.transform.localPosition = Quaternion.Euler(0f, angle, 0f) * new Vector3(0f, 0f, -1.1f);
-        arm.GetComponent<Renderer>().material.color = rippleColor;
+        arm.GetComponent<Renderer>().material = MakeMaterial(rippleColor);
     }
 
     // ---------- MonsterBase rules ----------
@@ -91,36 +129,47 @@ public class JalPishach : MonsterBase
         return IsOverWater(position, 2f);
     }
 
-    protected override bool CanSeePlayer()
+    protected override bool CanSeeTarget()
     {
         // It sees swimmers, not people wading or standing on shore.
-        return player.IsSwimming && IsOverWater(player.transform.position, 0f);
+        return target.IsSwimming && IsOverWater(target.Position, 0f);
     }
 
-    protected override bool CanTrackPlayer()
+    protected override bool CanTrackTarget()
     {
         // Follows anyone still in the water. Climbing out loses it.
-        return player.WaterDepth >= 0.3f && IsOverWater(player.transform.position, 1f);
+        return target.WaterDepth >= 0.3f && IsOverWater(target.Position, 1f);
     }
 
-    protected override bool CanAttackPlayer()
+    protected override bool CanAttackTarget()
     {
-        if (playerHealth != null && playerHealth.IsDead)
+        if (target.IsDead)
         {
             return false;
         }
-        bool inWater = player.WaterDepth >= 0.3f;
-        return inWater && HorizontalDistanceToPlayer() <= data.attackRange;
+        bool inWater = target.WaterDepth >= 0.3f;
+        return inWater && HorizontalDistanceToTarget() <= data.attackRange;
     }
 
     protected override void PerformAttack()
     {
         // Drag the victim down and toward the monster.
-        Vector3 toMonster = transform.position - player.transform.position;
+        Vector3 toMonster = transform.position - target.Position;
         toMonster.y = 0f;
-        player.AddImpulse(Vector3.down * dragDownSpeed + toMonster.normalized * 2f);
-        playerHealth.TakeDamage(data.attackDamage);
+        target.ServerAddImpulse(Vector3.down * dragDownSpeed + toMonster.normalized * 2f);
+        target.Health.TakeDamage(data.attackDamage);
         GameEvents.RaiseNoise(transform.position, 3f, true); // the splash of the attack
+    }
+
+    // Prefer players who are in the water over its home.
+    protected override float TargetScore(NetworkPlayer candidate)
+    {
+        float score = base.TargetScore(candidate);
+        if (candidate.WaterDepth < 0.3f)
+        {
+            score += 1000f;
+        }
+        return score;
     }
 
     protected override Vector3 GetWanderPoint()
@@ -162,6 +211,11 @@ public class JalPishach : MonsterBase
 
     private void UpdateHeightAndVisibility()
     {
+        if (!IsSpawned)
+        {
+            return;
+        }
+
         bool active = IsActive();
         SetRenderers(bodyRenderers, active);
 
@@ -175,12 +229,15 @@ public class JalPishach : MonsterBase
         float wantedOffset = State == MonsterState.Attack ? -0.1f : -submergeDepth;
         currentHeightOffset = Mathf.MoveTowards(currentHeightOffset, wantedOffset, 3f * Time.deltaTime);
 
-        Vector3 position = transform.position;
-        position.y = homeWater.SurfaceHeight + currentHeightOffset;
-        transform.position = position;
+        if (IsServer)
+        {
+            Vector3 position = transform.position;
+            position.y = homeWater.SurfaceHeight + currentHeightOffset;
+            transform.position = position;
+        }
 
         // Ripples show whenever it is moving (not idle) - this is the tell.
-        bool moving = State != MonsterState.Idle && !(State == MonsterState.Investigate && HasReached(TargetPoint));
+        bool moving = State != MonsterState.Idle && !(IsServer && State == MonsterState.Investigate && HasReached(TargetPoint));
         SetRenderers(rippleRenderers, moving);
         if (ripple != null)
         {

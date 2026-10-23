@@ -10,6 +10,11 @@ public class PackageData : ScriptableObject
     public int baseValue = 100;
     [Tooltip("Rigidbody mass in kg. Heavy packages sink, light ones float.")]
     public float mass = 3f;
+    [Tooltip("How many players must hold it to lift it. 2 = heavy, two-person package (plan 4.2).")]
+    [Range(1, 2)] public int holdersRequired = 1;
+    [Tooltip("Box size in metres.")]
+    public Vector3 size = new Vector3(0.5f, 0.4f, 0.5f);
+    public Color color = new Color(0.8f, 0.6f, 0.3f);
 
     [Header("Fragile")]
     public bool isFragile = false;

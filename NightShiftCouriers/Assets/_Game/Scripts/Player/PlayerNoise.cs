@@ -1,8 +1,10 @@
 using UnityEngine;
 
-// Turns what the player is doing into noise events that monsters can hear (section 4.6).
+// Turns what the player is doing into noise reports that monsters can hear (section 4.6).
 // Wading and swimming are "water noise"; crouch-wading is quiet.
+// Only the owner runs this (NetworkPlayer enables it); the server turns the report into a noise event.
 [RequireComponent(typeof(PlayerController))]
+[RequireComponent(typeof(NetworkPlayer))]
 public class PlayerNoise : MonoBehaviour
 {
     [SerializeField, Tooltip("Seconds between noise events while moving.")]
@@ -19,11 +21,13 @@ public class PlayerNoise : MonoBehaviour
     private float swimLoudness = 2.5f;
 
     private PlayerController player;
+    private NetworkPlayer networkPlayer;
     private float timer;
 
     private void Awake()
     {
         player = GetComponent<PlayerController>();
+        networkPlayer = GetComponent<NetworkPlayer>();
     }
 
     private void Update()
@@ -60,6 +64,6 @@ public class PlayerNoise : MonoBehaviour
             loudness = swimLoudness;
         }
 
-        GameEvents.RaiseNoise(transform.position, loudness, inWater);
+        networkPlayer.ReportNoise(loudness, inWater);
     }
 }

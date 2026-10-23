@@ -1,10 +1,15 @@
+using Unity.Netcode;
 using UnityEngine;
 
-// R.E.P.O.-style "hold beam": the held package is pulled toward a point in front of the camera.
-// E picks up / drops, left mouse throws.
+// R.E.P.O.-style "hold beam", server-authoritative. The owner asks (grab / drop / throw),
+// the server decides and moves the package. E grabs and drops, left mouse throws.
+// Heavy packages need two players: each grabs it, then it lifts (see Package).
 [RequireComponent(typeof(PlayerInputReader))]
-public class PlayerGrabber : MonoBehaviour
+[RequireComponent(typeof(NetworkPlayer))]
+public class PlayerGrabber : NetworkBehaviour
 {
+    private const ulong NoPackage = ulong.MaxValue;
+
     [Header("References")]
     [SerializeField] private Transform cameraTransform;
 
@@ -13,12 +18,6 @@ public class PlayerGrabber : MonoBehaviour
     private float grabRange = 3f;
     [SerializeField, Tooltip("Where the package floats in front of the camera (metres).")]
     private float holdDistance = 1.8f;
-    [SerializeField, Tooltip("How hard the package is pulled to the hold point. Higher = stiffer.")]
-    private float holdStrength = 12f;
-    [SerializeField, Tooltip("Max speed the package may move at while held (m/s).")]
-    private float maxHoldSpeed = 15f;
-    [SerializeField, Tooltip("If the package gets this far from the hold point (stuck on a wall), it is dropped.")]
-    private float breakDistance = 2.5f;
 
     [Header("Throwing")]
     [SerializeField, Tooltip("Throw speed for a 1 kg package (m/s). Heavier packages go slower.")]
@@ -30,23 +29,47 @@ public class PlayerGrabber : MonoBehaviour
     [SerializeField, Range(0.2f, 1f), Tooltip("Speed multiplier when carrying the heaviest load.")]
     private float slowestSpeedMultiplier = 0.55f;
 
-    private PlayerInputReader input;
-    private Package held;
-    private bool heldHadGravity;
+    // Written by the server so every client (and the owner's HUD / speed) knows what is held.
+    private readonly NetworkVariable<ulong> heldId = new NetworkVariable<ulong>(
+        NoPackage, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<float> carriedLoad = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
-    public bool IsHolding => held != null;
-    public Package HeldPackage => held;
+    private PlayerInputReader input;
+    private NetworkPlayer networkPlayer;
+    private Package held; // server only
+
+    public bool IsHolding => heldId.Value != NoPackage;
+
+    public Package HeldPackage
+    {
+        get
+        {
+            if (heldId.Value == NoPackage || NetworkManager == null)
+            {
+                return null;
+            }
+            if (NetworkManager.SpawnManager.SpawnedObjects.TryGetValue(heldId.Value, out NetworkObject spawned))
+            {
+                return spawned.GetComponent<Package>();
+            }
+            return null;
+        }
+    }
+
+    // Where the held package is pulled to (server uses the owner's published aim).
+    public Vector3 HoldPoint => networkPlayer.AimOrigin + networkPlayer.AimDirection * holdDistance;
 
     // 1.0 when empty-handed; lower when carrying something heavy.
     public float SpeedMultiplier
     {
         get
         {
-            if (held == null)
+            if (!IsHolding)
             {
                 return 1f;
             }
-            float t = Mathf.Clamp01(held.Body.mass / heaviestMass);
+            float t = Mathf.Clamp01(carriedLoad.Value / heaviestMass);
             return Mathf.Lerp(1f, slowestSpeedMultiplier, t);
         }
     }
@@ -54,88 +77,128 @@ public class PlayerGrabber : MonoBehaviour
     private void Awake()
     {
         input = GetComponent<PlayerInputReader>();
+        networkPlayer = GetComponent<NetworkPlayer>();
     }
+
+    public override void OnNetworkDespawn()
+    {
+        if (IsServer)
+        {
+            ServerDrop();
+        }
+    }
+
+    // ---------- Owner: input -> requests ----------
 
     private void Update()
     {
+        if (!IsSpawned || !IsOwner || networkPlayer.IsDead)
+        {
+            return;
+        }
+
         if (input.InteractPressedThisFrame)
         {
-            if (held != null)
+            if (IsHolding)
             {
-                Drop();
+                DropServerRpc();
             }
             else
             {
-                TryGrab();
+                GrabServerRpc(cameraTransform.position, cameraTransform.forward);
             }
         }
 
-        if (held != null && input.ThrowPressedThisFrame)
+        if (IsHolding && input.ThrowPressedThisFrame)
         {
-            Throw();
+            ThrowServerRpc(cameraTransform.forward);
         }
     }
 
-    private void FixedUpdate()
+    // ---------- Server: decisions ----------
+
+    [ServerRpc]
+    private void GrabServerRpc(Vector3 origin, Vector3 direction)
     {
-        if (held == null)
+        if (held != null || networkPlayer.IsDead)
         {
             return;
         }
 
-        Vector3 target = cameraTransform.position + cameraTransform.forward * holdDistance;
-        Vector3 toTarget = target - held.Body.position;
-
-        if (toTarget.magnitude > breakDistance)
+        // The ray must start near the player, so nobody can grab things from across the map.
+        if ((origin - networkPlayer.Position).sqrMagnitude > 9f)
         {
-            Drop();
             return;
         }
 
-        Vector3 velocity = toTarget * holdStrength;
-        velocity = Vector3.ClampMagnitude(velocity, maxHoldSpeed);
-        held.Body.linearVelocity = velocity;
-        held.Body.angularVelocity *= 0.8f; // stop wild spinning
-    }
-
-    private void TryGrab()
-    {
-        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
-        if (!Physics.Raycast(ray, out RaycastHit hit, grabRange, ~0, QueryTriggerInteraction.Ignore))
+        if (!Physics.Raycast(origin, direction.normalized, out RaycastHit hit, grabRange, ~0, QueryTriggerInteraction.Ignore))
         {
             return;
         }
 
         Package package = hit.collider.GetComponentInParent<Package>();
-        if (package == null || package.IsHeld || package.IsDelivered)
+        if (package == null || !package.IsSpawned)
         {
             return;
         }
 
-        held = package;
-        held.SetHeld(true);
-        heldHadGravity = held.Body.useGravity;
-        held.Body.useGravity = false;
+        if (package.ServerTryAddHolder(this))
+        {
+            held = package;
+            heldId.Value = package.NetworkObjectId;
+        }
     }
 
-    private void Drop()
+    [ServerRpc]
+    private void DropServerRpc()
     {
-        if (held == null)
+        ServerDrop();
+    }
+
+    [ServerRpc]
+    private void ThrowServerRpc(Vector3 direction)
+    {
+        if (held == null || !held.CanBeThrown)
         {
             return;
         }
-        held.Body.useGravity = heldHadGravity;
-        held.SetHeld(false);
-        held = null;
-    }
 
-    private void Throw()
-    {
         Package thrown = held;
-        Drop();
+        ServerDrop();
 
         float speed = throwSpeed / Mathf.Max(1f, thrown.Body.mass);
-        thrown.Body.linearVelocity = cameraTransform.forward * speed;
-        GameEvents.RaiseNoise(transform.position, 3f, false);
+        thrown.Body.linearVelocity = direction.normalized * speed;
+        GameEvents.RaiseNoise(networkPlayer.Position, 3f, false);
+    }
+
+    public void ServerDrop()
+    {
+        if (!IsServer || held == null)
+        {
+            return;
+        }
+
+        Package dropped = held;
+        held = null;
+        heldId.Value = NoPackage;
+        carriedLoad.Value = 0f;
+        dropped.ServerRemoveHolder(this);
+    }
+
+    // Called by the Package when it was released from outside (delivered, despawned).
+    public void ServerForget(Package package)
+    {
+        if (held == package)
+        {
+            held = null;
+            heldId.Value = NoPackage;
+            carriedLoad.Value = 0f;
+        }
+    }
+
+    // Called by the Package when the weight each holder carries changes.
+    public void ServerSetLoad(float load)
+    {
+        carriedLoad.Value = load;
     }
 }

@@ -12,6 +12,7 @@ public static class TestJalPishachSceneBuilder
     public static void Build()
     {
         SceneBuildHelpers.EnableNewInputSystem();
+        SceneBuildHelpers.NetworkPrefabs prefabs = SceneBuildHelpers.BuildNetworkPrefabs();
         SceneBuildHelpers.EnsureFolder("Assets/_Game/Scenes/Test_Monster_JalPishach");
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
@@ -43,11 +44,12 @@ public static class TestJalPishachSceneBuilder
         WaterVolume water = SceneBuildHelpers.MakeWater("Pool Water", new Vector3(centre.x, 1.3f, centre.z), 24f, 24f);
 
         // A package out on the pier end
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetStandardPackageData(), new Vector3(8f, 1.8f, centre.z + 9f), new Color(0.8f, 0.6f, 0.3f));
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(8f, 1.8f, centre.z + 9f));
 
-        SceneBuildHelpers.MakeJalPishach(water, new Vector3(0f, 1f, centre.z));
+        SceneBuildHelpers.MakeMonsterSpawn(water, new Vector3(0f, 1f, centre.z));
 
-        SceneBuildHelpers.MakePlayer(new Vector3(0f, 0.1f, southEdge - 8f));
+        SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, southEdge - 8f));
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         Debug.Log("Created " + ScenePath);

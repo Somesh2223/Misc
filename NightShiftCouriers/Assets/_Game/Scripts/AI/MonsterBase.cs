@@ -1,13 +1,18 @@
+using Unity.Netcode;
 using UnityEngine;
 
 // Shared monster brain: the state machine and the hearing/sight plumbing.
-// A specific monster (e.g. JalPishach) only fills in how it moves, what it can see, and how it attacks.
-public abstract class MonsterBase : MonoBehaviour
+// The AI runs ONLY on the server (plan section 5). Clients just receive the position (NetworkTransform)
+// and the current state (for visual tells like ripples).
+// A specific monster (e.g. JalPishach) fills in how it moves, what it can see, and how it attacks.
+public abstract class MonsterBase : NetworkBehaviour
 {
     [SerializeField] protected MonsterData data;
 
-    protected PlayerController player;
-    protected PlayerHealth playerHealth;
+    protected NetworkPlayer target;
+
+    private readonly NetworkVariable<byte> syncedState = new NetworkVariable<byte>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private MonsterState state = MonsterState.Idle;
     private float stateTimer;
@@ -16,7 +21,8 @@ public abstract class MonsterBase : MonoBehaviour
     private Vector3 targetPoint;
     private bool attackHit;
 
-    public MonsterState State => state;
+    // On the server this is the real state; on clients it is the copy sent by the server.
+    public MonsterState State => IsServer ? state : (MonsterState)syncedState.Value;
     public Vector3 TargetPoint => targetPoint;
 
     // ---------- Things each monster must define ----------
@@ -25,12 +31,12 @@ public abstract class MonsterBase : MonoBehaviour
     protected abstract bool IsActive();
     // Should this noise be able to attract the monster?
     protected abstract bool CanHearNoise(Vector3 position, float loudness, bool fromWater);
-    // Can the monster see the player right now (starts a hunt)?
-    protected abstract bool CanSeePlayer();
-    // Can the monster still follow the player while hunting?
-    protected abstract bool CanTrackPlayer();
-    // Is the player close enough, and in the right place, to attack?
-    protected abstract bool CanAttackPlayer();
+    // Can the monster see its target right now (starts a hunt)?
+    protected abstract bool CanSeeTarget();
+    // Can the monster still follow its target while hunting?
+    protected abstract bool CanTrackTarget();
+    // Is the target close enough, and in the right place, to attack?
+    protected abstract bool CanAttackTarget();
     // Deal the actual hit.
     protected abstract void PerformAttack();
     // A random point the monster is allowed to walk/swim to.
@@ -43,38 +49,47 @@ public abstract class MonsterBase : MonoBehaviour
     // Optional hooks
     protected virtual void OnStateEntered(MonsterState newState) { }
 
+    // Lower score = better target. Monsters can prefer some players (e.g. ones in the water).
+    protected virtual float TargetScore(NetworkPlayer candidate)
+    {
+        return HorizontalDistance(transform.position, candidate.Position);
+    }
+
     // ---------- Setup ----------
 
-    protected virtual void Start()
+    public override void OnNetworkSpawn()
     {
-        player = FindFirstObjectByType<PlayerController>();
-        if (player != null)
+        if (IsServer)
         {
-            playerHealth = player.GetComponent<PlayerHealth>();
+            GameEvents.NoiseMade += OnNoiseMade;
+            ChangeState(MonsterState.Idle);
         }
-        ChangeState(MonsterState.Idle);
     }
 
-    protected virtual void OnEnable()
+    public override void OnNetworkDespawn()
     {
-        GameEvents.NoiseMade += OnNoiseMade;
-    }
-
-    protected virtual void OnDisable()
-    {
-        GameEvents.NoiseMade -= OnNoiseMade;
+        if (IsServer)
+        {
+            GameEvents.NoiseMade -= OnNoiseMade;
+        }
     }
 
     // ---------- State machine ----------
 
     protected virtual void Update()
     {
-        if (player == null || !IsActive())
+        if (!IsServer || !IsSpawned || !IsActive())
         {
             return;
         }
 
-        if (playerHealth != null && playerHealth.IsDead && state != MonsterState.Cooldown)
+        PickTarget();
+        if (target == null)
+        {
+            return; // nobody to hunt
+        }
+
+        if (target.IsDead && state != MonsterState.Cooldown)
         {
             ChangeState(MonsterState.Cooldown);
         }
@@ -90,9 +105,36 @@ public abstract class MonsterBase : MonoBehaviour
         }
     }
 
+    private void PickTarget()
+    {
+        // While attacking, keep the same victim.
+        if (state == MonsterState.Attack && target != null && target.IsSpawned)
+        {
+            return;
+        }
+
+        NetworkPlayer best = null;
+        float bestScore = float.MaxValue;
+        foreach (NetworkPlayer candidate in NetworkPlayer.All)
+        {
+            if (candidate == null || !candidate.IsSpawned || candidate.IsDead)
+            {
+                continue;
+            }
+            float score = TargetScore(candidate);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+        target = best;
+    }
+
     protected void ChangeState(MonsterState newState)
     {
         state = newState;
+        syncedState.Value = (byte)newState;
         searching = false;
 
         switch (newState)
@@ -175,11 +217,11 @@ public abstract class MonsterBase : MonoBehaviour
 
     private void UpdateHunt()
     {
-        float distance = HorizontalDistanceToPlayer();
+        float distance = HorizontalDistanceToTarget();
 
-        if (CanTrackPlayer() && distance < data.forgetDistance)
+        if (CanTrackTarget() && distance < data.forgetDistance)
         {
-            targetPoint = player.transform.position;
+            targetPoint = target.Position;
             loseTargetTimer = data.loseTargetSeconds;
         }
         else
@@ -194,7 +236,7 @@ public abstract class MonsterBase : MonoBehaviour
 
         MoveToward(targetPoint, data.huntSpeed);
 
-        if (CanAttackPlayer())
+        if (CanAttackTarget())
         {
             ChangeState(MonsterState.Attack);
         }
@@ -206,7 +248,7 @@ public abstract class MonsterBase : MonoBehaviour
         if (stateTimer <= 0f && !attackHit)
         {
             attackHit = true;
-            if (CanAttackPlayer())
+            if (CanAttackTarget())
             {
                 PerformAttack(); // the player can still dodge by leaving range during the wind-up
             }
@@ -228,9 +270,9 @@ public abstract class MonsterBase : MonoBehaviour
 
     private bool TryStartHuntFromSight()
     {
-        if (CanSeePlayer() && HorizontalDistanceToPlayer() <= data.sightRange)
+        if (CanSeeTarget() && HorizontalDistanceToTarget() <= data.sightRange)
         {
-            targetPoint = player.transform.position;
+            targetPoint = target.Position;
             ChangeState(MonsterState.Hunt);
             return true;
         }
@@ -239,7 +281,7 @@ public abstract class MonsterBase : MonoBehaviour
 
     private void OnNoiseMade(Vector3 position, float loudness, bool fromWater)
     {
-        if (player == null || !IsActive())
+        if (!IsSpawned || !IsActive())
         {
             return;
         }
@@ -278,9 +320,9 @@ public abstract class MonsterBase : MonoBehaviour
 
     // ---------- Helpers ----------
 
-    protected float HorizontalDistanceToPlayer()
+    protected float HorizontalDistanceToTarget()
     {
-        return HorizontalDistance(transform.position, player.transform.position);
+        return HorizontalDistance(transform.position, target.Position);
     }
 
     protected static float HorizontalDistance(Vector3 a, Vector3 b)

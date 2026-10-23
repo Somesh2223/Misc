@@ -1,0 +1,23 @@
+{
+    "name": "NightShift.Lobby",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Netcode.Runtime",
+        "Facepunch Transport for Netcode for GameObjects"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.community.netcode.transport.facepunch",
+            "expression": "",
+            "define": "FACEPUNCH_TRANSPORT"
+        }
+    ],
+    "noEngineReferences": false
+}

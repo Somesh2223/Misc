@@ -12,6 +12,7 @@ public static class TestPackagesSceneBuilder
     public static void Build()
     {
         SceneBuildHelpers.EnableNewInputSystem();
+        SceneBuildHelpers.NetworkPrefabs prefabs = SceneBuildHelpers.BuildNetworkPrefabs();
         SceneBuildHelpers.EnsureFolder("Assets/_Game/Scenes/Test_Packages");
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
@@ -29,13 +30,14 @@ public static class TestPackagesSceneBuilder
         SceneBuildHelpers.MakeBlock("Pool Wall W", pool + new Vector3(-4.25f, 1f, 0f), new Vector3(0.5f, 2f, 8f));
         SceneBuildHelpers.MakeWater("Water", new Vector3(pool.x, 1.5f, pool.z), 8f, 8f);
 
-        // One of each package on the table
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetStandardPackageData(), new Vector3(-3f, 1.3f, 3f), new Color(0.8f, 0.6f, 0.3f));
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetFragilePackageData(), new Vector3(-1f, 1.3f, 3f), new Color(0.9f, 0.9f, 0.5f));
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetHeavyPackageData(), new Vector3(1f, 1.4f, 3f), new Color(0.4f, 0.4f, 0.45f));
-        SceneBuildHelpers.MakePackage(SceneBuildHelpers.GetWetPackageData(), new Vector3(3f, 1.3f, 3f), new Color(0.9f, 0.9f, 0.95f));
+        // One of each package on the table. The server spawns them when the shift starts.
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(-3f, 1.3f, 3f));
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetFragilePackageData(), new Vector3(-1f, 1.3f, 3f));
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetHeavyPackageData(), new Vector3(1.5f, 1.4f, 3f));
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetWetPackageData(), new Vector3(3.5f, 1.3f, 3f));
 
-        SceneBuildHelpers.MakePlayer(new Vector3(0f, 0.1f, -4f));
+        SceneBuildHelpers.MakePlayerSpawn(new Vector3(0f, 0.1f, -4f));
+        SceneBuildHelpers.MakeNetworkSetup(prefabs, SceneBuildHelpers.GetFloodSettings(true), true, true, 400);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         Debug.Log("Created " + ScenePath);

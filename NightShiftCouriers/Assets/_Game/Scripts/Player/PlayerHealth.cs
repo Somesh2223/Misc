@@ -1,7 +1,8 @@
+using Unity.Netcode;
 using UnityEngine;
 
-// Simple health with respawn at the start point. Real death rules (Signal Ghost) come in Milestone 4.
-public class PlayerHealth : MonoBehaviour
+// Server-authoritative health with respawn at the spawn point. Real death rules (Signal Ghost) come in Milestone 4.
+public class PlayerHealth : NetworkBehaviour
 {
     [SerializeField] private float maxHealth = 100f;
     [SerializeField, Tooltip("Seconds without damage before health regenerates.")]
@@ -10,75 +11,96 @@ public class PlayerHealth : MonoBehaviour
     [SerializeField, Tooltip("Seconds the 'you died' message shows before respawning.")]
     private float respawnDelay = 2.5f;
 
-    private float health;
+    private readonly NetworkVariable<float> health = new NetworkVariable<float>(
+        100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<bool> dead = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
     private float timeSinceDamage;
     private float respawnTimer;
-    private bool isDead;
-    private Vector3 spawnPosition;
-    private Quaternion spawnRotation;
-    private CharacterController controller;
 
-    public bool IsDead => isDead;
-    public float Percent => health / maxHealth;
+    public bool IsDead => dead.Value;
+    public float Percent => health.Value / maxHealth;
 
-    private void Awake()
+    public override void OnNetworkSpawn()
     {
-        health = maxHealth;
-        spawnPosition = transform.position;
-        spawnRotation = transform.rotation;
-        controller = GetComponent<CharacterController>();
+        if (IsServer)
+        {
+            health.Value = maxHealth;
+            dead.Value = false;
+        }
     }
 
+    // Server only. Anything that hurts a player calls this.
     public void TakeDamage(float amount)
     {
-        if (isDead)
+        if (!IsServer || dead.Value)
         {
             return;
         }
 
-        health -= amount;
+        health.Value = Mathf.Max(0f, health.Value - amount);
         timeSinceDamage = 0f;
         GameEvents.RaisePlayerDamaged(amount);
 
-        if (health <= 0f)
+        if (health.Value <= 0f)
         {
-            health = 0f;
-            isDead = true;
+            dead.Value = true;
             respawnTimer = respawnDelay;
+
+            PlayerGrabber grabber = GetComponent<PlayerGrabber>();
+            if (grabber != null)
+            {
+                grabber.ServerDrop();
+            }
             GameEvents.RaisePlayerDied();
         }
     }
 
+    // Server only: full heal (used when a shift restarts).
+    public void ServerRevive()
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+        health.Value = maxHealth;
+        dead.Value = false;
+    }
+
     private void Update()
     {
-        if (isDead)
+        if (!IsServer)
+        {
+            return;
+        }
+
+        if (dead.Value)
         {
             respawnTimer -= Time.deltaTime;
             if (respawnTimer <= 0f)
             {
-                Respawn();
+                health.Value = maxHealth;
+                dead.Value = false;
+                GetComponent<NetworkPlayer>().ServerRespawn();
             }
             return;
         }
 
         timeSinceDamage += Time.deltaTime;
-        if (timeSinceDamage > regenDelay && health < maxHealth)
+        if (timeSinceDamage > regenDelay && health.Value < maxHealth)
         {
-            health = Mathf.Min(maxHealth, health + regenPerSecond * Time.deltaTime);
+            health.Value = Mathf.Min(maxHealth, health.Value + regenPerSecond * Time.deltaTime);
         }
-    }
-
-    private void Respawn()
-    {
-        controller.enabled = false;
-        transform.SetPositionAndRotation(spawnPosition, spawnRotation);
-        controller.enabled = true;
-        health = maxHealth;
-        isDead = false;
     }
 
     private void OnGUI()
     {
+        if (!IsSpawned || !IsOwner)
+        {
+            return;
+        }
+
         // Health bar above the stamina bar
         Rect back = new Rect(20, Screen.height - 62, 220, 14);
         GUI.color = Color.black;
@@ -87,7 +109,7 @@ public class PlayerHealth : MonoBehaviour
         GUI.DrawTexture(new Rect(back.x, back.y, back.width * Percent, back.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        if (isDead)
+        if (dead.Value)
         {
             GUIStyle style = new GUIStyle(GUI.skin.label);
             style.fontSize = 48;
