@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -9,7 +10,20 @@ public class DeliveryPoint : MonoBehaviour
 {
     [SerializeField] private string address = "Address";
 
+    private static readonly List<DeliveryPoint> all = new List<DeliveryPoint>();
+
+    public static IReadOnlyList<DeliveryPoint> All => all;
     public string Address => address;
+
+    private void OnEnable()
+    {
+        all.Add(this);
+    }
+
+    private void OnDisable()
+    {
+        all.Remove(this);
+    }
 
     private void Awake()
     {

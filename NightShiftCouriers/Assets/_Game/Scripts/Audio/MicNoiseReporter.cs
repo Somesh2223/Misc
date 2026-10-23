@@ -43,6 +43,10 @@ public class MicNoiseReporter : MonoBehaviour
 
     private void Update()
     {
+        if (networkPlayer.IsDead)
+        {
+            return;
+        }
         VoiceChatService voice = VoiceChatService.Instance;
         UsingVoiceChat = voice != null && voice.IsConnected;
         if (UsingVoiceChat)

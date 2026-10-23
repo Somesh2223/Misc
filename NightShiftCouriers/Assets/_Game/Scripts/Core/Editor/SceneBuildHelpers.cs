@@ -140,12 +140,20 @@ public static partial class SceneBuildHelpers
         manager.AddComponent<CampaignHUD>();
         manager.AddComponent<MessageFeedHUD>();
         manager.AddComponent<ShopWindow>();
+        manager.AddComponent<JournalWindow>();
+        manager.AddComponent<HighlightReelWindow>();
+        manager.AddComponent<WorldMarkersHUD>();
 
         SerializedObject configSo = new SerializedObject(config);
         configSo.FindProperty("playerPrefab").objectReferenceValue = prefabs.player;
         configSo.FindProperty("packageCatalog").objectReferenceValue = GetPackageCatalog();
         configSo.FindProperty("itemCatalog").objectReferenceValue = GetItemCatalog();
         configSo.FindProperty("floodSettings").objectReferenceValue = flood;
+        configSo.FindProperty("curseTable").objectReferenceValue = GetCurseTable();
+        configSo.FindProperty("customerDirectory").objectReferenceValue = GetCustomerDirectory();
+        configSo.FindProperty("loreBook").objectReferenceValue = GetLoreBook();
+        configSo.FindProperty("roleCatalog").objectReferenceValue = GetRoleCatalog();
+        configSo.FindProperty("courierBadge").objectReferenceValue = BadgeItem;
         configSo.FindProperty("raftPartFloaters").objectReferenceValue = GetRaftFloatersData();
         configSo.FindProperty("raftPartPlatform").objectReferenceValue = GetRaftPlatformData();
         configSo.FindProperty("raftPartLashing").objectReferenceValue = GetRaftLashingData();
@@ -174,6 +182,7 @@ public static partial class SceneBuildHelpers
         ShiftSpawner spawner = spawnerObject.AddComponent<ShiftSpawner>();
         SerializedObject spawnerSo = new SerializedObject(spawner);
         spawnerSo.FindProperty("campaignPrefab").objectReferenceValue = prefabs.campaign;
+        spawnerSo.FindProperty("ghostWorldPrefab").objectReferenceValue = prefabs.ghostWorld;
         spawnerSo.FindProperty("floodPrefab").objectReferenceValue = prefabs.flood;
         spawnerSo.FindProperty("deliveryPrefab").objectReferenceValue = prefabs.delivery;
         spawnerSo.FindProperty("packagePrefab").objectReferenceValue = prefabs.package;
@@ -241,13 +250,14 @@ public static partial class SceneBuildHelpers
         marker.AddComponent<PlayerSpawnPoint>();
     }
 
-    public static void MakePackageSpawn(PackageData data, Vector3 position, string destination = "")
+    public static void MakePackageSpawn(PackageData data, Vector3 position, string destination = "", bool alwaysCursed = false)
     {
-        GameObject marker = new GameObject("Package Spawn - " + data.displayName);
+        GameObject marker = new GameObject("Package Spawn - " + data.displayName + (alwaysCursed ? " (cursed)" : ""));
         marker.transform.position = position;
         PackageSpawnPoint point = marker.AddComponent<PackageSpawnPoint>();
         point.data = data;
         point.destination = destination;
+        point.alwaysCursed = alwaysCursed;
     }
 
     // Jal-Pishach: lives in the given water.
@@ -291,7 +301,56 @@ public static partial class SceneBuildHelpers
         SerializedObject so = new SerializedObject(point);
         so.FindProperty("address").stringValue = address;
         so.ApplyModifiedPropertiesWithoutUndo();
+
+        // The customer's door, on the far side of the zone: press E to knock (plan 4.8).
+        GameObject door = MakeBlock("Door: " + address,
+            groundPosition + new Vector3(0f, 1.1f, size.z / 2f + 0.15f), new Vector3(1.2f, 2.2f, 0.2f));
+        ColorObject(door, new Color(0.35f, 0.2f, 0.1f));
+        DeliveryDoor doorScript = door.AddComponent<DeliveryDoor>();
+        SerializedObject doorSo = new SerializedObject(doorScript);
+        doorSo.FindProperty("address").stringValue = address;
+        doorSo.ApplyModifiedPropertiesWithoutUndo();
         return point;
+    }
+
+    // A streetlight a Signal Ghost can flicker (plan 4.10).
+    public static void MakeStreetlight(Vector3 groundPosition)
+    {
+        GameObject pole = MakeBlock("Streetlight", groundPosition + Vector3.up * 2.5f, new Vector3(0.15f, 5f, 0.15f));
+        GameObject lampObject = new GameObject("Lamp");
+        lampObject.transform.position = groundPosition + Vector3.up * 4.9f;
+        lampObject.transform.SetParent(pole.transform, true);
+        Light lamp = lampObject.AddComponent<Light>();
+        lamp.type = LightType.Point;
+        lamp.range = 12f;
+        lamp.intensity = 1.6f;
+        lamp.color = new Color(1f, 0.8f, 0.55f);
+
+        int id = Object.FindObjectsByType<Streetlight>(FindObjectsSortMode.None).Length + 1;
+        Streetlight light = pole.AddComponent<Streetlight>();
+        SerializedObject so = new SerializedObject(light);
+        so.FindProperty("lightId").intValue = id;
+        so.FindProperty("lamp").objectReferenceValue = lamp;
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // A revive shrine (plan 4.10): bring a fallen courier's badge here and press E.
+    public static void MakeReviveShrine(Vector3 groundPosition, float yaw)
+    {
+        GameObject shrine = MakeBlock("Revive Shrine (E with a badge)", groundPosition + Vector3.up * 0.6f, new Vector3(1f, 1.2f, 1f));
+        shrine.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        ColorObject(shrine, new Color(0.9f, 0.45f, 0.1f));
+        shrine.AddComponent<ReviveShrine>();
+    }
+
+    // A dangerous spot: a live wire in a puddle (hurts players standing in it).
+    public static void MakeHazard(string name, Vector3 centre, Vector3 size)
+    {
+        GameObject hazard = MakeBlock(name, centre, size);
+        hazard.layer = IgnoreRaycastLayer;
+        hazard.GetComponent<BoxCollider>().isTrigger = true;
+        ColorObject(hazard, new Color(0.9f, 0.9f, 0.2f));
+        hazard.AddComponent<HazardZone>();
     }
 
     // The depot shop: press E on it to buy items.

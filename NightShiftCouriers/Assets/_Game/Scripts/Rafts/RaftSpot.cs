@@ -93,7 +93,16 @@ public class RaftSpot : MonoBehaviour, IServerInteractable
             return;
         }
 
-        progress += Time.deltaTime;
+        // A Builder on the crew builds faster (plan 4.7).
+        float speed = 1f;
+        foreach (NetworkPlayer builder in builders)
+        {
+            if (builder.Passive == RolePassive.Builder)
+            {
+                speed = 1.6f;
+            }
+        }
+        progress += Time.deltaTime * speed;
         if (showStatus)
         {
             GameEvents.RaiseNoise(transform.position, buildLoudness, false);

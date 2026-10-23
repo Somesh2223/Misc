@@ -195,6 +195,27 @@ public class NetworkBootstrap : MonoBehaviour
         GUILayout.EndArea();
     }
 
+    // Roles are picked at the depot (plan 4.7).
+    private void DrawRolePicker()
+    {
+        NetworkPlayer local = NetworkPlayer.Local;
+        RoleCatalog roles = config.RoleCatalog;
+        if (local == null || roles == null || roles.roles == null || roles.roles.Length == 0)
+        {
+            return;
+        }
+
+        RoleData role = local.Role;
+        if (GUILayout.Button("Role: " + (role != null ? role.roleName : "-") + "  (change)"))
+        {
+            local.ChooseRole((local.RoleIndex + 1) % roles.roles.Length);
+        }
+        if (role != null)
+        {
+            GUILayout.Label(role.description);
+        }
+    }
+
     private void DrawConnectedPanel()
     {
         GUILayout.BeginArea(new Rect(Screen.width - 260, 90, 240, 420));
@@ -207,6 +228,7 @@ public class NetworkBootstrap : MonoBehaviour
         {
             if (campaign.Phase == ShiftPhase.Depot)
             {
+                DrawRolePicker();
                 if (network.IsServer)
                 {
                     if (GUILayout.Button("START SHIFT")) ShiftSpawner.Instance.StartShift();

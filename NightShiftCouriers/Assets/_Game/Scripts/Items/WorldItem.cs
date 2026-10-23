@@ -8,10 +8,12 @@ public class WorldItem : NetworkBehaviour, IServerInteractable
         -1, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private int pendingIndex = -1;
+    private int payload; // server only: e.g. whose courier badge this is
 
-    public void ServerInit(int catalogIndex)
+    public void ServerInit(int catalogIndex, int payloadValue = 0)
     {
         pendingIndex = catalogIndex;
+        payload = payloadValue;
     }
 
     public override void OnNetworkSpawn()
@@ -35,7 +37,11 @@ public class WorldItem : NetworkBehaviour, IServerInteractable
         {
             return;
         }
-        if (player.Inventory.ServerTryAdd(itemIndex.Value))
+        if (player.IsDead)
+        {
+            return;
+        }
+        if (player.Inventory.ServerTryAdd(itemIndex.Value, payload))
         {
             ItemData item = GameNetworkConfig.Instance.ItemCatalog.Get(itemIndex.Value);
             CampaignManager.Instance.ServerMessage("Picked up " + item.displayName + ".", player.OwnerClientId);

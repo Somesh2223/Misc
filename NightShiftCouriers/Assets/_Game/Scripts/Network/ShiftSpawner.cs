@@ -11,6 +11,7 @@ public class ShiftSpawner : MonoBehaviour
 
     [Header("Prefabs")]
     [SerializeField] private GameObject campaignPrefab;
+    [SerializeField] private GameObject ghostWorldPrefab;
     [SerializeField] private GameObject floodPrefab;
     [SerializeField] private GameObject deliveryPrefab;
     [SerializeField] private GameObject packagePrefab;
@@ -23,6 +24,8 @@ public class ShiftSpawner : MonoBehaviour
     private bool autoStartShift = false;
     [SerializeField, Tooltip("Test scenes: start the run with this much money (-1 = the normal amount).")]
     private int startingMoneyOverride = -1;
+    [SerializeField, Range(0f, 1f), Tooltip("Chance that a package with an address is cursed (plan 4.9).")]
+    private float cursedChance = 0.15f;
 
     private readonly List<NetworkObject> shiftObjects = new List<NetworkObject>();
     private SteamLobbyService steam;
@@ -81,6 +84,9 @@ public class ShiftSpawner : MonoBehaviour
             campaign.GetComponent<CampaignManager>().ServerSetBank(startingMoneyOverride);
         }
 
+        GameObject ghostWorld = Instantiate(ghostWorldPrefab);
+        ghostWorld.GetComponent<NetworkObject>().Spawn(true);
+
         if (autoStartShift)
         {
             StartShift();
@@ -96,10 +102,14 @@ public class ShiftSpawner : MonoBehaviour
             return;
         }
 
-        // The shift ends at dawn, or once every order is delivered or lost.
+        // The shift ends at dawn, when the whole crew is dead, or once every order is delivered or lost.
         if (FloodManager.Instance != null && FloodManager.Instance.IsDawn)
         {
             EndShift(true);
+        }
+        else if (WholeCrewDead())
+        {
+            EndShift(false, true);
         }
         else if (DeliveryManager.Instance != null && DeliveryManager.Instance.AllOrdersResolved)
         {
@@ -134,9 +144,13 @@ public class ShiftSpawner : MonoBehaviour
 
         foreach (PackageSpawnPoint point in FindObjectsByType<PackageSpawnPoint>(FindObjectsSortMode.None))
         {
-            Package package = ServerSpawnPackage(point.data, point.transform.position, point.destination);
+            bool hasAddress = point.destination != "";
+            bool cursed = point.alwaysCursed || (hasAddress && Random.value < cursedChance);
+            Package package = ServerSpawnPackage(point.data, point.transform.position, point.destination, cursed);
             deliveryManager.ServerRegisterPackage(package);
         }
+
+        GiveRoleItems();
 
         foreach (WorldItemSpawnPoint point in FindObjectsByType<WorldItemSpawnPoint>(FindObjectsSortMode.None))
         {
@@ -149,10 +163,45 @@ public class ShiftSpawner : MonoBehaviour
         }
     }
 
-    private void EndShift(bool atDawn)
+    private bool WholeCrewDead()
+    {
+        if (NetworkPlayer.All.Count == 0)
+        {
+            return false;
+        }
+        foreach (NetworkPlayer player in NetworkPlayer.All)
+        {
+            if (!player.IsDead)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Each role starts the shift with its item (plan 4.7).
+    private void GiveRoleItems()
+    {
+        ItemCatalog catalog = GameNetworkConfig.Instance.ItemCatalog;
+        foreach (NetworkPlayer player in NetworkPlayer.All)
+        {
+            RoleData role = player.Role;
+            if (role != null && role.startingItem != null)
+            {
+                player.Inventory.ServerTryAdd(catalog.IndexOf(role.startingItem));
+            }
+        }
+    }
+
+    private void EndShift(bool atDawn, bool crewWiped = false)
     {
         int earnings = DeliveryManager.Instance != null ? DeliveryManager.Instance.Money : 0;
         string reason = "Every order is done.";
+        if (crewWiped)
+        {
+            earnings /= 2;
+            reason = "The whole crew was lost. The company pays half.";
+        }
 
         if (atDawn)
         {
@@ -199,6 +248,7 @@ public class ShiftSpawner : MonoBehaviour
         {
             player.GetComponent<PlayerGrabber>().ServerDrop();
             player.Inventory.ServerSetFlashlight(false);
+            player.Inventory.ServerRemoveAll(ItemType.CourierBadge);
             player.Health.ServerRevive();
             player.ServerRespawn();
         }
@@ -219,14 +269,36 @@ public class ShiftSpawner : MonoBehaviour
         shiftObjects.Add(networkObject);
     }
 
-    public Package ServerSpawnPackage(PackageData data, Vector3 position, string destination)
+    public Package ServerSpawnPackage(PackageData data, Vector3 position, string destination, bool cursed = false)
     {
         PackageCatalog catalog = GameNetworkConfig.Instance.PackageCatalog;
         GameObject instance = Instantiate(packagePrefab, position, Quaternion.identity);
         Package package = instance.GetComponent<Package>();
-        package.ServerInit(catalog.IndexOf(data), destination);
+        package.ServerInit(catalog.IndexOf(data), destination, cursed);
         ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
         return package;
+    }
+
+    // A dead player's courier ID badge (plan 4.10).
+    public void ServerDropBadge(Vector3 position, ulong ownerClientId)
+    {
+        ItemData badge = GameNetworkConfig.Instance.CourierBadge;
+        int index = GameNetworkConfig.Instance.ItemCatalog.IndexOf(badge);
+        if (index < 0)
+        {
+            return;
+        }
+        GameObject instance = Instantiate(GameNetworkConfig.Instance.ItemPrefabs.worldItem, position, Quaternion.identity);
+        instance.GetComponent<WorldItem>().ServerInit(index, (int)ownerClientId);
+        ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
+    }
+
+    // Used by cursed packages and broken customer rules to let something loose.
+    public void ServerSpawnMonster(MonsterKind kind, Vector3 position)
+    {
+        GameObject prefab = kind == MonsterKind.Vetala ? vetalaPrefab : chudailPrefab;
+        GameObject instance = Instantiate(prefab, position, Quaternion.identity);
+        ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
     }
 
     private void SpawnWorldItem(WorldItemSpawnPoint point)

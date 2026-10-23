@@ -13,6 +13,8 @@ public class PlayerInputReader : MonoBehaviour
     private InputAction interactAction;
     private InputAction throwAction;
     private InputAction useAction;
+    private InputAction openAction;
+    private InputAction journalAction;
     private readonly InputAction[] slotActions = new InputAction[4];
 
     public Vector2 Move => moveAction.ReadValue<Vector2>();
@@ -24,6 +26,8 @@ public class PlayerInputReader : MonoBehaviour
     public bool InteractPressedThisFrame => interactAction.WasPressedThisFrame();
     public bool ThrowPressedThisFrame => throwAction.WasPressedThisFrame();
     public bool UsePressedThisFrame => useAction.WasPressedThisFrame();
+    public bool OpenPressedThisFrame => openAction.WasPressedThisFrame();
+    public bool JournalPressedThisFrame => journalAction.WasPressedThisFrame();
 
     // The inventory slot (0-3) whose number key was pressed this frame, or -1.
     public int SlotPressedThisFrame
@@ -74,6 +78,9 @@ public class PlayerInputReader : MonoBehaviour
         useAction = new InputAction("Use", InputActionType.Button, "<Mouse>/rightButton");
         useAction.AddBinding("<Gamepad>/leftTrigger");
 
+        openAction = new InputAction("OpenPackage", InputActionType.Button, "<Keyboard>/f");
+        journalAction = new InputAction("Journal", InputActionType.Button, "<Keyboard>/j");
+
         for (int i = 0; i < slotActions.Length; i++)
         {
             slotActions[i] = new InputAction("Slot" + (i + 1), InputActionType.Button, "<Keyboard>/" + (i + 1));
@@ -90,6 +97,8 @@ public class PlayerInputReader : MonoBehaviour
         interactAction.Enable();
         throwAction.Enable();
         useAction.Enable();
+        openAction.Enable();
+        journalAction.Enable();
         foreach (InputAction slot in slotActions)
         {
             slot.Enable();
@@ -106,6 +115,8 @@ public class PlayerInputReader : MonoBehaviour
         interactAction.Disable();
         throwAction.Disable();
         useAction.Disable();
+        openAction.Disable();
+        journalAction.Disable();
         foreach (InputAction slot in slotActions)
         {
             slot.Disable();

@@ -248,12 +248,14 @@ public class Vetala : MonsterBase
     private void LaughClientRpc()
     {
         ProceduralSounds.PlayAt(ProceduralSounds.Laugh, transform.position, 0.8f, 25f);
+        HighlightMoments.Flag("Vetala laughed", 30, transform.position);
     }
 
     [ClientRpc]
     private void LaughAtClientRpc(Vector3 position)
     {
         ProceduralSounds.PlayAt(ProceduralSounds.Laugh, position, 0.8f, 25f);
+        HighlightMoments.Flag("Possessed package!", 70, position);
     }
 
     [ClientRpc]

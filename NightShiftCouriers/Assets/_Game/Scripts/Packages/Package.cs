@@ -44,6 +44,11 @@ public class Package : NetworkBehaviour
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<float> possessionPenalty = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Cursed packages (plan 4.9): whisper, move, feel warm. Opening one rolls on the curse table.
+    private readonly NetworkVariable<bool> cursed = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<bool> screaming = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<bool> delivered = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
@@ -59,6 +64,11 @@ public class Package : NetworkBehaviour
     private float spawnTime;
     private static readonly List<Package> allPackages = new List<Package>();
 
+    private bool pendingCursed;
+    private float whisperTimer;
+    private float hopTimer;
+    private float screamTimer;
+    private float lastShownHealth;
     private ulong possessionVictim;
     private float possessionSeconds;
     private readonly List<PlayerGrabber> holders = new List<PlayerGrabber>();
@@ -69,6 +79,8 @@ public class Package : NetworkBehaviour
 
     public PackageData Data => data;
     public bool IsPossessed => possessed.Value;
+    public bool IsCursed => cursed.Value;
+    public bool IsScreaming => screaming.Value;
     public ulong PossessionVictim => possessionVictim;
     public Rigidbody Body => body;
     public string DestinationAddress => destination.Value.ToString();
@@ -101,6 +113,10 @@ public class Package : NetworkBehaviour
                 result *= 1f - Mathf.Clamp01(wetness.Value / data.secondsToRuin);
             }
             result *= 1f - possessionPenalty.Value;
+            if (screaming.Value)
+            {
+                result = 0f; // an opened, screaming package is worthless
+            }
             return result;
         }
     }
@@ -112,10 +128,11 @@ public class Package : NetworkBehaviour
     }
 
     // Server: call before Spawn() to choose what kind of package this is.
-    public void ServerInit(int catalogIndex, string destinationAddress)
+    public void ServerInit(int catalogIndex, string destinationAddress, bool isCursed = false)
     {
         pendingDataIndex = catalogIndex;
         pendingDestination = destinationAddress;
+        pendingCursed = isCursed;
     }
 
     public override void OnNetworkSpawn()
@@ -125,7 +142,10 @@ public class Package : NetworkBehaviour
         {
             dataIndex.Value = pendingDataIndex;
             destination.Value = new FixedString64Bytes(pendingDestination);
+            cursed.Value = pendingCursed;
             spawnTime = Time.time;
+            whisperTimer = Random.Range(4f, 10f);
+            hopTimer = Random.Range(10f, 20f);
         }
 
         ResolveData();
@@ -147,6 +167,7 @@ public class Package : NetworkBehaviour
         health.OnValueChanged += OnConditionChanged;
         wetness.OnValueChanged += OnConditionChanged;
         possessionPenalty.OnValueChanged += OnConditionChanged;
+        lastShownHealth = health.Value;
         UpdateLook();
     }
 
@@ -188,6 +209,7 @@ public class Package : NetworkBehaviour
         HandleWater();
         HandleHolding();
         HandlePossession();
+        HandleCurse();
     }
 
     private void HandleWater()
@@ -296,6 +318,76 @@ public class Package : NetworkBehaviour
 
         // Hard impacts are loud
         GameEvents.RaiseNoise(transform.position, Mathf.Clamp(impactSpeed, 1f, 10f), false);
+    }
+
+    // ---------- Server: cursed packages ----------
+
+    private void HandleCurse()
+    {
+        if (!cursed.Value)
+        {
+            return;
+        }
+
+        if (screaming.Value)
+        {
+            screamTimer -= Time.fixedDeltaTime;
+            if (screamTimer <= 0f)
+            {
+                screamTimer = 4f;
+                GameEvents.RaiseNoise(transform.position, 6f, false);
+                ScreamClientRpc();
+            }
+            return;
+        }
+
+        whisperTimer -= Time.fixedDeltaTime;
+        if (whisperTimer <= 0f)
+        {
+            whisperTimer = Random.Range(8f, 16f);
+            WhisperClientRpc();
+        }
+
+        // Now and then it shifts by itself when nobody holds it.
+        hopTimer -= Time.fixedDeltaTime;
+        if (hopTimer <= 0f)
+        {
+            hopTimer = Random.Range(15f, 25f);
+            if (!IsHeld)
+            {
+                Vector3 hop = new Vector3(Random.Range(-1f, 1f), 3f, Random.Range(-1f, 1f));
+                body.AddForce(hop, ForceMode.VelocityChange);
+            }
+        }
+    }
+
+    public void ServerStartScreaming()
+    {
+        screaming.Value = true;
+        screamTimer = 0f;
+    }
+
+    public void ServerAnnounceOpened()
+    {
+        OpenedClientRpc();
+    }
+
+    [ClientRpc]
+    private void WhisperClientRpc()
+    {
+        ProceduralSounds.PlayAt(ProceduralSounds.Whisper, transform.position, 0.5f, 10f);
+    }
+
+    [ClientRpc]
+    private void ScreamClientRpc()
+    {
+        ProceduralSounds.PlayAt(ProceduralSounds.Scream, transform.position, 1f, 40f);
+    }
+
+    [ClientRpc]
+    private void OpenedClientRpc()
+    {
+        HighlightMoments.Flag("Cursed package opened", 80, transform.position);
     }
 
     // ---------- Server: possession ----------
@@ -433,6 +525,13 @@ public class Package : NetworkBehaviour
     private void OnConditionChanged(float previous, float current)
     {
         UpdateLook();
+
+        // A hard knock is a body cam moment (plan 4.11).
+        if (health.Value < lastShownHealth - 30f)
+        {
+            HighlightMoments.Flag("Big drop", 40, transform.position);
+        }
+        lastShownHealth = health.Value;
     }
 
     // The package darkens and turns red-brown as it takes damage or gets wet.

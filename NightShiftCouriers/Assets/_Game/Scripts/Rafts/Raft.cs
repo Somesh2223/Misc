@@ -174,6 +174,17 @@ public class Raft : NetworkBehaviour
         {
             return;
         }
+
+        // A Builder on board: their lashing often holds (plan 4.7).
+        foreach (NetworkPlayer player in NetworkPlayer.All)
+        {
+            if (player.Passive == RolePassive.Builder && IsOnDeck(player.Position) && Random.value < 0.5f)
+            {
+                CampaignManager.Instance.ServerMessage("The builder's lashing holds!");
+                return;
+            }
+        }
+
         hitPoints.Value -= amount;
         CampaignManager.Instance.ServerMessage("The raft is damaged! (" + Mathf.Max(0, hitPoints.Value) + "/" + maxHitPoints + ")");
         if (hitPoints.Value <= 0)
@@ -202,6 +213,7 @@ public class Raft : NetworkBehaviour
             return;
         }
         broken = true;
+        BrokeClientRpc();
 
         GameNetworkConfig config = GameNetworkConfig.Instance;
         Vector3 centre = transform.position + Vector3.up * 0.5f;
@@ -211,6 +223,12 @@ public class Raft : NetworkBehaviour
 
         CampaignManager.Instance.ServerMessage(reason);
         NetworkObject.Despawn(true);
+    }
+
+    [ClientRpc]
+    private void BrokeClientRpc()
+    {
+        HighlightMoments.Flag("The raft broke!", 70, transform.position);
     }
 
     [ClientRpc]

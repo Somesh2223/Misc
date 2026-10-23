@@ -57,6 +57,10 @@ public class ShopWindow : MonoBehaviour
             for (int i = 0; i < catalog.items.Length; i++)
             {
                 ItemData item = catalog.items[i];
+                if (!item.inShop)
+                {
+                    continue;
+                }
                 GUILayout.BeginHorizontal(GUI.skin.box);
                 GUILayout.Label(item.displayName + "  -  " + item.price + "\n" + item.description, GUILayout.Width(360f));
                 GUI.enabled = campaign.Bank >= item.price;

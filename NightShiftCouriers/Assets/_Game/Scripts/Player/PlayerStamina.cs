@@ -18,12 +18,20 @@ public class PlayerStamina : MonoBehaviour
     private float exhaustedRecoverAmount = 25f;
 
     private float current;
+    private float maxMultiplier = 1f;
     private float regenTimer;
     private bool exhausted;
 
     public float Current => current;
-    public float Max => maxStamina;
-    public float Percent => current / maxStamina;
+    public float Max => maxStamina * maxMultiplier;
+    public float Percent => current / Max;
+
+    // Roles can raise the maximum (Runner: plan 4.7).
+    public void SetMaxMultiplier(float multiplier)
+    {
+        maxMultiplier = multiplier;
+        current = Mathf.Min(current, Max);
+    }
     public bool IsExhausted => exhausted;
 
     private void Awake()
@@ -47,7 +55,7 @@ public class PlayerStamina : MonoBehaviour
     // Give stamina back (e.g. a teammate pulled you up).
     public void Restore(float amount)
     {
-        current = Mathf.Min(maxStamina, current + amount);
+        current = Mathf.Min(Max, current + amount);
         if (exhausted && current >= exhaustedRecoverAmount)
         {
             exhausted = false;
@@ -79,7 +87,7 @@ public class PlayerStamina : MonoBehaviour
             return;
         }
 
-        current = Mathf.Min(maxStamina, current + regenPerSecond * Time.deltaTime);
+        current = Mathf.Min(Max, current + regenPerSecond * Time.deltaTime);
 
         if (exhausted && current >= exhaustedRecoverAmount)
         {

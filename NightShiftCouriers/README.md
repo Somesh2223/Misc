@@ -32,6 +32,18 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - [x] Chudail (voice mimic, backwards footprints, anklet bells; blocked by salt) and Vetala (drops on lit players, possesses packages)
 - [ ] Playtest: "Do players use tells and counters, or just run?"
 
+## Milestone 4 progress (signature features)
+- [x] Signal Ghosts: dead players fly freely, flicker streetlights (E), ring a bell (right mouse), see monsters, talk only through radios
+- [x] Courier ID badge: carry a fallen teammate's badge to a revive shrine (E) to bring them back weakened
+- [x] Cursed packages: whisper, hop, feel warm; F opens one for a weighted good or bad outcome (Curse Table asset)
+- [x] Customers & notes with rules (knock once, come alone, no lights, before the second rise); bonus for following, trouble for breaking
+- [x] Journal (J): tonight's orders with notes, plus lore entries that unlock over nights (saved on the host's PC)
+- [x] Body cam: rolling snapshots, auto-flagged moments, best clips shown after the shift, saved as PNG
+- [x] Roles: Navigator, Builder, Runner, Lookout (pick in the side panel at the depot)
+- [x] Retro / VHS camera look (F10 toggles)
+- [ ] Low-poly city art kit (needs an asset pack you choose; the greybox stays for now)
+- [ ] Playtest: "Do players share clips and laugh?"
+
 ## How multiplayer works (read this first)
 - Every scene has a **NetworkManager** object. The single-player test scenes start hosting automatically, so you
   play alone as the host. `City_Greybox` shows a menu instead.
@@ -75,6 +87,11 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 | Use selected item | Right mouse (on a raft: paddle; best with a plank) |
 | Pick up item / use shop / raft workbench | E |
 | Push-to-talk (if chosen in the side panel) | Hold V |
+| Open a cursed package you hold | F |
+| Knock on a customer's door | E on the brown door |
+| Journal (orders, notes, lore) | J |
+| Retro camera effect on/off | F10 |
+| As a Signal Ghost | WASD fly, Space/Ctrl up/down, E flicker a streetlight, right mouse ring a bell |
 
 ## Test checklists
 
@@ -114,6 +131,16 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 | Create Test_Monster_Chudail Scene | She wanders the streets (bells while moving, footprints pointing backwards). Alone, she attacks. Pour salt (right mouse) and stand in the ring: she cannot reach you. Throw a decoy to pull her away. With 2+ players: stay together and she waits at a distance and copies a teammate's voice (with an echo). |
 | Create Test_Monster_Vetala Scene | Walk under the wire with the flashlight ON: it drops on you. Lights off: it ignores you. Carry a package near it: it may possess it (heavier, screams, loses value) - hand it to a teammate to break the spell. The charm hides you from it. |
 | Create City_Greybox Scene | The full loop: Host, buy items in the depot, START SHIFT, deliver, build a raft, get back to the depot extraction before dawn, see the results, RETURN TO DEPOT, repeat for three nights to hit the quota. |
+
+## Testing Milestone 4
+**Night Shift > Create Test_Ghosts_And_Lore Scene**, then Play. You start in the depot with 1000 money.
+- Side panel: change your **Role** (try Lookout / Navigator later in the shift). Press **START SHIFT**; your role item appears in your inventory.
+- **J** opens the journal: tonight's order for "Test Door" and the customer's note.
+- **Customer rule**: press E on the brown door *once*, then drop the package in the green zone: bonus pay. Knock twice to see what happens.
+- **Cursed packages**: hold one of the three on the table: it whispers and the hint says it is warm. Press **F** to open it.
+- **Signal Ghost**: walk into the yellow live-wire puddle. You die, drop your badge, and fly as a ghost: E near a streetlight flickers it, right mouse rings a bell, monsters are marked. With 2 players: the living one picks up the badge (E) and presses E on the orange shrine to revive you. Alone: the whole crew is dead, so the shift ends.
+- **Body cam**: on the results screen the best clips play under the summary; press "Save highlight clips (PNG)" and open the folder it shows.
+- **F10** toggles the retro look.
 
 ## Testing multiplayer
 
@@ -169,6 +196,10 @@ When "Chudail voice mimic" is ON (side panel), short clips (1.5 s) of your voice
 memory for that session only, and played back by the Chudail to your teammates. Nothing is saved to disk or sent anywhere else.
 Turn it OFF in the side panel at any time.
 
+## Body cam files
+Saved clips go to `%USERPROFILE%\AppData\LocalLow\DefaultCompany\NightShiftCouriers\BodyCam\<date>` on Windows
+(Unity's `Application.persistentDataPath`). They are PNG frames; stitching them into a video can come later.
+
 ## Known issues
 - All code was written without a Unity editor available, so it has never been compiled or run. Expect to fix small compile or API errors on first open.
 - **Package versions are unverified**: the registry was not reachable while writing this. Vivox is pinned to 16.7.0 and Authentication to 3.4.0 (the Vivox calls were written from its documented API without being able to read the docs page; the `Channel3DProperties` constructor argument order is the likeliest thing to need a fix). `com.unity.netcode.gameobjects` is pinned to 2.1.1; if Unity says that version does not exist, pick the newest 2.x in Package Manager. The Facepunch transport is pinned to a git commit and was written for NGO 1.x; if it does not compile against NGO 2.x, update it or tell me the errors.
@@ -177,6 +208,8 @@ Turn it OFF in the side panel at any time.
 - Sounds are generated in code (bells, laughter, screams, bangs) as placeholders until the audio pass (M5).
 - The radio uses Vivox's "transmit to all channels" mode; it has no static effect yet, and dead players cannot hijack it yet (M4).
 - The Chudail walks the navigation map built at shift start; it does not swim, so deep water does not stop it (streets just flood around her).
+- Ghost "phone booths" (plan 4.10) are not built; ghosts speak through radios only.
+- The retro effect works with Unity's built-in renderer (this project's current setup). If you switch to URP, it needs to be ported to a URP renderer feature.
 - One test machine means no real latency: expect to tune the smoothing and the speed check once you play over the internet.
 - Climbing and wetness (plan 4.1) are not built yet (M3 / later).
 - Water is a flat trigger box; there is no water shader or underwater effect yet.

@@ -146,6 +146,16 @@ public class FloodManager : NetworkBehaviour
         }
     }
 
+    // A cursed package can make the water rise early (plan 4.9).
+    public void ServerAdvanceStage()
+    {
+        if (IsServer)
+        {
+            WarningClientRpc(stage.Value + 1, 0f);
+            StartNextStage();
+        }
+    }
+
     private void StartNextStage()
     {
         if (IsLastStage)

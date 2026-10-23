@@ -29,6 +29,16 @@ public class DeliveryHUD : MonoBehaviour
                 else if (held.DestinationAddress != "")
                 {
                     hint = "Holding package for: " + held.DestinationAddress;
+                    CustomerData customer = GameNetworkConfig.Instance.CustomerDirectory != null
+                        ? GameNetworkConfig.Instance.CustomerDirectory.Find(held.DestinationAddress) : null;
+                    if (customer != null)
+                    {
+                        hint += "\n\"" + customer.note + "\"";
+                    }
+                }
+                if (held.IsCursed && !held.IsScreaming)
+                {
+                    hint += "\nIt is warm... and whispering. [F] open it?";
                 }
                 if (held.Data.holdersRequired > 1)
                 {
@@ -39,7 +49,7 @@ public class DeliveryHUD : MonoBehaviour
                     hint += "  - it feels unnaturally heavy... pass it to a teammate!";
                 }
             }
-            GUI.Label(new Rect(Screen.width / 2 - 300, Screen.height - 120, 600, 30), hint);
+            GUI.Label(new Rect(Screen.width / 2 - 300, Screen.height - 150, 600, 80), hint);
         }
     }
 }

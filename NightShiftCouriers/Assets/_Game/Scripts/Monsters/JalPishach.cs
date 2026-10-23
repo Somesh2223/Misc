@@ -192,6 +192,7 @@ public class JalPishach : MonsterBase
     private void SplashClientRpc()
     {
         ProceduralSounds.PlayAt(ProceduralSounds.Splash, transform.position, 1f, 30f);
+        HighlightMoments.Flag("Jal-Pishach attack", 60, transform.position);
     }
 
     // Prefer players who are in the water over its home.

@@ -13,6 +13,10 @@ public static partial class SceneBuildHelpers
     public const string ItemDataFolder = "Assets/_Game/ScriptableObjects/Items";
     public const string MonsterDataFolder = "Assets/_Game/ScriptableObjects/Monsters";
     public const string FloodFolder = "Assets/_Game/ScriptableObjects/Flood";
+    public const string CustomerFolder = "Assets/_Game/ScriptableObjects/Customers";
+    public const string LoreFolder = "Assets/_Game/ScriptableObjects/Lore";
+    public const string RoleFolder = "Assets/_Game/ScriptableObjects/Roles";
+    public const string RetroShaderPath = "Assets/_Game/Shaders/RetroVHS.shader";
 
     // A material saved as an asset (prefabs cannot keep in-memory materials).
     public static Material GetMaterialAsset(string assetName, Color color)
@@ -177,6 +181,21 @@ public static partial class SceneBuildHelpers
         "Right mouse: patch the raft you stand on, or mend the fragile package you hold.", new Color(0.9f, 0.3f, 0.3f));
     public static ItemData GlowItem => GetItem("Item_GlowSticks", "Glow Sticks", ItemType.GlowSticks, 20, 3, 0f,
         "Right mouse: drop a glow stick to mark a path. Does not attract monsters.", Color.green);
+    public static ItemData BadgeItem
+    {
+        get
+        {
+            ItemData badge = GetItem("Item_CourierBadge", "Courier ID Badge", ItemType.CourierBadge, 0, 1, 0f,
+                "A fallen courier's badge. Take it to a shrine (E) to bring them back.", new Color(0.2f, 0.8f, 1f));
+            if (badge.inShop)
+            {
+                badge.inShop = false;
+                EditorUtility.SetDirty(badge);
+            }
+            return badge;
+        }
+    }
+
     public static ItemData LashingItem => GetItem("Item_LashingRope", "Lashing Rope (raft part)", ItemType.LashingRope, 200, 1, 0f,
         "One of the three raft parts. Appears next to the shop.", new Color(0.8f, 0.7f, 0.45f));
 
@@ -195,10 +214,148 @@ public static partial class SceneBuildHelpers
         catalog.items = new ItemData[]
         {
             FlashlightItem, RopeItem, PlankItem, RadioItem, DecoyItem,
-            SaltItem, CharmItem, RepairItem, GlowItem, LashingItem
+            SaltItem, CharmItem, RepairItem, GlowItem, LashingItem, BadgeItem
         };
         EditorUtility.SetDirty(catalog);
         AssetDatabase.SaveAssets();
+        return catalog;
+    }
+
+    // ---------- Milestone 4 data ----------
+
+    private static T GetOrCreateAsset<T>(string folder, string assetName, out bool created) where T : ScriptableObject
+    {
+        string path = folder + "/" + assetName + ".asset";
+        T asset = AssetDatabase.LoadAssetAtPath<T>(path);
+        created = asset == null;
+        if (created)
+        {
+            EnsureFolder(folder);
+            asset = ScriptableObject.CreateInstance<T>();
+            AssetDatabase.CreateAsset(asset, path);
+        }
+        return asset;
+    }
+
+    // Cursed package outcomes (plan 4.9). Created once; tweak the weights in the Inspector afterwards.
+    public static CurseTable GetCurseTable()
+    {
+        CurseTable table = GetOrCreateAsset<CurseTable>(PackageDataFolder, "CurseTable", out bool created);
+        if (created)
+        {
+            table.entries = new CurseTable.Entry[]
+            {
+                new CurseTable.Entry { outcome = CurseOutcome.RareItem, weight = 25f, message = "Something useful falls out!" },
+                new CurseTable.Entry { outcome = CurseOutcome.BigMoney, weight = 20f, message = "It is stuffed with cash!" },
+                new CurseTable.Entry { outcome = CurseOutcome.LoreReveal, weight = 15f, message = "Inside: an old letter. (New journal entry)" },
+                new CurseTable.Entry { outcome = CurseOutcome.MonsterReleased, weight = 15f, message = "Something crawls out of it!" },
+                new CurseTable.Entry { outcome = CurseOutcome.FloodJump, weight = 12f, message = "The water surges up early!" },
+                new CurseTable.Entry { outcome = CurseOutcome.Screaming, weight = 13f, message = "It starts SCREAMING." },
+            };
+            EditorUtility.SetDirty(table);
+        }
+        return table;
+    }
+
+    private static CustomerData GetCustomer(string assetName, string customerName, string address, string note,
+        CustomerRule rule, int loreEntry)
+    {
+        CustomerData customer = GetOrCreateAsset<CustomerData>(CustomerFolder, assetName, out bool created);
+        if (created)
+        {
+            customer.customerName = customerName;
+            customer.address = address;
+            customer.note = note;
+            customer.rule = rule;
+            customer.loreEntry = loreEntry;
+            EditorUtility.SetDirty(customer);
+        }
+        return customer;
+    }
+
+    // Customers and their notes (plan 4.8). Always refreshed so new customers reach older builds.
+    public static CustomerDirectory GetCustomerDirectory()
+    {
+        CustomerDirectory directory = GetOrCreateAsset<CustomerDirectory>(CustomerFolder, "CustomerDirectory", out bool created);
+        directory.customers = new CustomerData[]
+        {
+            GetCustomer("Customer_Pillai", "Mr. Pillai", "12 Market Street",
+                "Leave it inside the shutter. If the lights flicker, do not wait for me.", CustomerRule.NobodyAnswers, 0),
+            GetCustomer("Customer_Priest", "The temple priest", "7 Temple Lane",
+                "Bring it before the second siren. After that, the temple belongs to the water.", CustomerRule.BeforeSecondRise, 1),
+            GetCustomer("Customer_Iyer", "Mrs. Iyer, 3rd floor", "Mrs. Iyer, Rooftop Flat",
+                "Knock once. Do NOT knock twice.", CustomerRule.KnockOnce, 2),
+            GetCustomer("Customer_LaneHouse", "(no name given)", "Lane House Roof",
+                "Come alone. Whatever you hear on the way up, it is not your friends.", CustomerRule.ComeAlone, 3),
+            GetCustomer("Customer_Test", "Test customer", "Test Door",
+                "Knock once, exactly once, then leave it at the door. Lights off, please.", CustomerRule.KnockOnce, 4),
+        };
+        EditorUtility.SetDirty(directory);
+        return directory;
+    }
+
+    // The depot journal (plan 4.8).
+    public static LoreBook GetLoreBook()
+    {
+        LoreBook book = GetOrCreateAsset<LoreBook>(LoreFolder, "LoreBook", out bool created);
+        if (created)
+        {
+            book.entries = new LoreBook.Entry[]
+            {
+                new LoreBook.Entry { title = "Shift Handbook, page 1",
+                    text = "Couriers will complete the night's orders before dawn. Couriers will not discuss what they see. "
+                         + "The company is not responsible for anything that follows you home." },
+                new LoreBook.Entry { title = "The temple bell",
+                    text = "The priest says the bell was rung every monsoon night for three hundred years, to tell the water "
+                         + "where the town ends. This year nobody rang it." },
+                new LoreBook.Entry { title = "Mrs. Iyer",
+                    text = "Mrs. Iyer has lived on the third floor since 1974. Her neighbours moved out in 1975. "
+                         + "She orders the same parcel every week. Nobody knows who sends it." },
+                new LoreBook.Entry { title = "Footprints",
+                    text = "A note pinned to the depot board: 'If the footprints face you, she is walking away from you. "
+                         + "If they face away... run.'" },
+                new LoreBook.Entry { title = "Knock once",
+                    text = "An old courier's diary: 'Once is a delivery. Twice is an invitation.'" },
+                new LoreBook.Entry { title = "The canal",
+                    text = "Before the drains, the canal was a river. Before the river, the old ones say, it was a mouth." },
+                new LoreBook.Entry { title = "Hanging things",
+                    text = "Do not shine your light up into the trees. They are not sleeping. They are waiting for the light." },
+                new LoreBook.Entry { title = "Company memo",
+                    text = "Quota targets will continue to rise. Couriers who do not meet quota will be let go. "
+                         + "Couriers who are let go are not to be spoken of." },
+            };
+            EditorUtility.SetDirty(book);
+        }
+        return book;
+    }
+
+    private static RoleData GetRole(string assetName, string roleName, string description, RolePassive passive, ItemData item)
+    {
+        RoleData role = GetOrCreateAsset<RoleData>(RoleFolder, assetName, out bool created);
+        if (created)
+        {
+            role.roleName = roleName;
+            role.description = description;
+            role.passive = passive;
+            role.startingItem = item;
+            EditorUtility.SetDirty(role);
+        }
+        return role;
+    }
+
+    // Roles (plan 4.7). Always refreshed.
+    public static RoleCatalog GetRoleCatalog()
+    {
+        RoleCatalog catalog = GetOrCreateAsset<RoleCatalog>(RoleFolder, "RoleCatalog", out bool created);
+        catalog.roles = new RoleData[]
+        {
+            GetRole("Role_Courier", "Courier", "No special skill.", RolePassive.None, null),
+            GetRole("Role_Navigator", "Navigator", "Sees delivery addresses from far away. Starts with a radio.", RolePassive.Navigator, RadioItem),
+            GetRole("Role_Builder", "Builder", "Builds rafts faster; rafts they ride often shrug off hits. Starts with a repair kit.", RolePassive.Builder, RepairItem),
+            GetRole("Role_Runner", "Runner", "More stamina, faster climbing. Starts with a rope.", RolePassive.Runner, RopeItem),
+            GetRole("Role_Lookout", "Lookout", "Sees nearby monsters marked on screen. Starts with glow sticks.", RolePassive.Lookout, GlowItem),
+        };
+        EditorUtility.SetDirty(catalog);
         return catalog;
     }
 
@@ -320,6 +477,7 @@ public static partial class SceneBuildHelpers
         public GameObject glowStick;
         public GameObject worldItem;
         public GameObject raft;
+        public GameObject ghostWorld;
 
         // Everything the server may spawn (the player prefab is registered separately).
         public GameObject[] AllSpawnable()
@@ -327,7 +485,7 @@ public static partial class SceneBuildHelpers
             return new GameObject[]
             {
                 campaign, flood, delivery, package, jalPishach, chudail, vetala,
-                rope, plank, decoy, saltWard, glowStick, worldItem, raft
+                rope, plank, decoy, saltWard, glowStick, worldItem, raft, ghostWorld
             };
         }
     }
@@ -355,6 +513,7 @@ public static partial class SceneBuildHelpers
         prefabs.glowStick = BuildGlowStickPrefab();
         prefabs.worldItem = BuildWorldItemPrefab();
         prefabs.raft = BuildRaftPrefab();
+        prefabs.ghostWorld = BuildManagerPrefab("GhostWorld", typeof(GhostWorld), null);
         AssetDatabase.SaveAssets();
         return prefabs;
     }
@@ -410,13 +569,18 @@ public static partial class SceneBuildHelpers
         PlayerVoice voice = Ensure<PlayerVoice>(player);
         Ensure<PlayerHealth>(player);
         PlayerInventory inventory = Ensure<PlayerInventory>(player);
+        Ensure<SignalGhost>(player);
+        BodyCam bodyCam = Ensure<BodyCam>(player);
 
         // Camera (first person view, used only by the owner)
         GameObject cameraObject = new GameObject("Camera");
         cameraObject.transform.SetParent(player.transform, false);
         cameraObject.transform.localPosition = new Vector3(0f, 1.6f, 0f);
-        cameraObject.AddComponent<Camera>();
+        Camera playerCamera = cameraObject.AddComponent<Camera>();
         cameraObject.AddComponent<AudioListener>();
+        RetroCameraEffect retro = cameraObject.AddComponent<RetroCameraEffect>();
+        SetObjectField(retro, "shader", AssetDatabase.LoadAssetAtPath<Shader>(RetroShaderPath));
+        SetObjectField(bodyCam, "sourceCamera", playerCamera);
 
         // Body: what other players see, and what they bump into (owners hide their own).
         GameObject body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
@@ -450,6 +614,7 @@ public static partial class SceneBuildHelpers
         microphone.enabled = false;
         mic.enabled = false;
         voice.enabled = false;
+        bodyCam.enabled = false;
 
         // Players are on "Ignore Raycast": the navigation map and rafts ignore them.
         SetLayerRecursively(player, IgnoreRaycastLayer);

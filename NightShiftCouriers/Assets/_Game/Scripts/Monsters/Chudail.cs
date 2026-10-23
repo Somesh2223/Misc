@@ -276,6 +276,7 @@ public class Chudail : MonsterBase
     private void ScreamClientRpc()
     {
         ProceduralSounds.PlayAt(ProceduralSounds.Scream, transform.position, 1f, 40f);
+        HighlightMoments.Flag("Chudail attack", 70, transform.position);
     }
 
     // ---------- Tells (every machine) ----------

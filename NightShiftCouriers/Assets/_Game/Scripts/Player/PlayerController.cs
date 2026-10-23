@@ -68,6 +68,10 @@ public class PlayerController : MonoBehaviour
     private float mantleUp = 1.3f;
     [SerializeField] private float mantleForward = 0.8f;
 
+    [Header("Signal Ghost")]
+    [SerializeField, Tooltip("Flying speed while dead (m/s).")]
+    private float ghostSpeed = 7f;
+
     [Header("Wetness")]
     [SerializeField, Tooltip("Wetness gained per second while wading (0-1 scale). Swimming soaks you instantly.")]
     private float wetPerSecond = 0.5f;
@@ -106,6 +110,8 @@ public class PlayerController : MonoBehaviour
     public float CurrentSpeed => horizontalVelocity.magnitude;
     public float Pitch => lookPitch;
     public bool IsClimbing => isClimbing;
+    // Set by NetworkPlayer from the player's role (Runner climbs faster).
+    public float ClimbSpeedMultiplier { get; set; } = 1f;
     public bool IsOnRaft => platform != null && platform.isRaft;
     // 0 = dry, 1 = soaked. Wet players are slower and louder (PlayerNoise reads this).
     public float Wetness => wetness;
@@ -169,8 +175,13 @@ public class PlayerController : MonoBehaviour
 
         if (health != null && health.IsDead)
         {
+            // Signal Ghost: fly freely through the city (plan 4.10).
             isClimbing = false;
-            return; // no moving while dead
+            isSwimming = false;
+            isSprinting = false;
+            HandleLook();
+            HandleGhostFlight();
+            return;
         }
 
         UpdateWaterState();
@@ -440,6 +451,30 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    // ---------- Signal Ghost ----------
+
+    private void HandleGhostFlight()
+    {
+        if (controller.enabled)
+        {
+            controller.enabled = false; // ghosts pass through everything; Teleport turns it back on
+        }
+
+        Vector2 move = MoveInput;
+        Vector3 direction = cameraTransform.forward * move.y + cameraTransform.right * move.x;
+        if (JumpHeld)
+        {
+            direction += Vector3.up;
+        }
+        if (CrouchHeld)
+        {
+            direction += Vector3.down;
+        }
+        transform.position += Vector3.ClampMagnitude(direction, 1f) * ghostSpeed * Time.deltaTime;
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+    }
+
     // ---------- Climbing (section 4.1) ----------
 
     private bool TryFindClimbable(out RaycastHit hit)
@@ -500,7 +535,7 @@ public class PlayerController : MonoBehaviour
 
         climbNormal = Flatten(wallHit.normal, climbNormal);
         Vector3 right = Vector3.Cross(Vector3.up, -climbNormal);
-        Vector3 velocity = (Vector3.up * move.y + right * move.x) * climbSpeed - climbNormal * 0.5f;
+        Vector3 velocity = (Vector3.up * move.y + right * move.x) * climbSpeed * ClimbSpeedMultiplier - climbNormal * 0.5f;
         controller.Move(velocity * Time.deltaTime);
 
         // Climbing down onto the floor ends the climb.

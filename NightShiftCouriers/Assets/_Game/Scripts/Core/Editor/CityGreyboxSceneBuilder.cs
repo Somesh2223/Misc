@@ -29,6 +29,7 @@ public static class CityGreyboxSceneBuilder
         BuildBridge();
         BuildRaftArea();
         BuildVetalaPerches();
+        BuildStreetlights();
 
         // Water: the city floods, and the canal strip (z 0..10) is where the Jal-Pishach lives
         SceneBuildHelpers.MakeWater("Flood Water (city)", new Vector3(0f, -0.5f, 0f), 140f, 140f, true);
@@ -67,12 +68,14 @@ public static class CityGreyboxSceneBuilder
         SceneBuildHelpers.MakeBlock("Depot Table", new Vector3(0f, 0.5f, -31f), new Vector3(8f, 1f, 1.5f));
         SceneBuildHelpers.MakeShopTerminal(new Vector3(6f, 0f, -26f), -90f);
         SceneBuildHelpers.MakeExtractionZone(new Vector3(0f, 2f, -28f), new Vector3(16f, 4f, 12f));
+        SceneBuildHelpers.MakeReviveShrine(new Vector3(-6f, 0f, -24f), 90f);
 
         // Packages appear on the table when the shift starts
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(-3f, 1.3f, -31f), "12 Market Street");
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetFragilePackageData(), new Vector3(-1f, 1.3f, -31f), "7 Temple Lane");
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetWetPackageData(), new Vector3(1f, 1.3f, -31f), "Mrs. Iyer, Rooftop Flat");
-        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(2.5f, 1.3f, -31f), "Lane House Roof");
+        // This one is always cursed (plan 4.9): deliver it unopened, or open it and gamble.
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(2.5f, 1.3f, -31f), "Lane House Roof", true);
         // Needs two players to lift: a bonus for crews of 2+ (the quota can be met without it)
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetHeavyPackageData(), new Vector3(-3f, 0.4f, -28f), "12 Market Street");
 
@@ -98,6 +101,8 @@ public static class CityGreyboxSceneBuilder
         // Temple courtyard: a rare lashing rope lies here (raft part).
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetRaftLashingData(), new Vector3(20f, 0.3f, 45f));
         SceneBuildHelpers.MakeItemSpawn(SceneBuildHelpers.SaltItem, new Vector3(14f, 0.3f, 44f));
+        // A second revive shrine in the temple courtyard.
+        SceneBuildHelpers.MakeReviveShrine(new Vector3(22f, 0f, 48f), 180f);
     }
 
     private static void BuildBridge()
@@ -124,6 +129,20 @@ public static class CityGreyboxSceneBuilder
         SceneBuildHelpers.MakeBlock("Godown East", new Vector3(-38f, 2f, -16f), new Vector3(0.4f, 4f, 8f));
         SceneBuildHelpers.MakeBlock("Godown Roof", new Vector3(-42f, 4.1f, -16f), new Vector3(8.4f, 0.2f, 8.4f));
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetRaftPlatformData(), new Vector3(-42f, 0.3f, -17f));
+    }
+
+    // Streetlights along the main roads, for Signal Ghosts to flicker (plan 4.10).
+    private static void BuildStreetlights()
+    {
+        Vector3[] spots =
+        {
+            new Vector3(-2f, 0f, -16f), new Vector3(2f, 0f, 14f), new Vector3(-12f, 0f, 18f), new Vector3(8f, 0f, 22f),
+            new Vector3(-18f, 0f, 34f), new Vector3(4f, 0f, 30f), new Vector3(20f, 0f, 28f), new Vector3(-20f, 0f, -4f),
+        };
+        foreach (Vector3 spot in spots)
+        {
+            SceneBuildHelpers.MakeStreetlight(spot);
+        }
     }
 
     // Vetalas hang from a wire across the market street and from the temple balcony.

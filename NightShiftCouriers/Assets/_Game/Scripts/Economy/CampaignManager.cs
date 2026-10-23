@@ -33,6 +33,16 @@ public class CampaignManager : NetworkBehaviour
     private readonly NetworkVariable<FixedString512Bytes> resultText = new NetworkVariable<FixedString512Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+    private const string LoreSaveKey = "NightShift.UnlockedLore";
+
+    // Journal entries the crew has found. Kept on the host's machine between sessions (plan 4.15: permanent unlocks).
+    private NetworkList<int> unlockedLore;
+
+    private void Awake()
+    {
+        unlockedLore = new NetworkList<int>();
+    }
+
     public int Bank => bank.Value;
     public int QuotaProgress => quotaProgress.Value;
     public int Quota => quota.Value;
@@ -48,6 +58,7 @@ public class CampaignManager : NetworkBehaviour
         if (IsServer)
         {
             ResetRun();
+            LoadLore();
         }
     }
 
@@ -111,6 +122,75 @@ public class CampaignManager : NetworkBehaviour
 
         resultText.Value = new FixedString512Bytes(text);
         phase.Value = (int)ShiftPhase.Results;
+    }
+
+    // ---------- Journal (plan 4.8) ----------
+
+    public bool IsLoreUnlocked(int index)
+    {
+        return unlockedLore.Contains(index);
+    }
+
+    public void ServerUnlockLore(int index)
+    {
+        LoreBook book = GameNetworkConfig.Instance.LoreBook;
+        LoreBook.Entry entry = book != null ? book.Get(index) : null;
+        if (entry == null || unlockedLore.Contains(index))
+        {
+            return;
+        }
+        unlockedLore.Add(index);
+        SaveLore();
+        ServerMessage("New journal entry: " + entry.title + " (J to read)");
+    }
+
+    public void ServerUnlockRandomLore()
+    {
+        LoreBook book = GameNetworkConfig.Instance.LoreBook;
+        if (book == null || book.entries == null)
+        {
+            return;
+        }
+
+        System.Collections.Generic.List<int> locked = new System.Collections.Generic.List<int>();
+        for (int i = 0; i < book.entries.Length; i++)
+        {
+            if (!unlockedLore.Contains(i))
+            {
+                locked.Add(i);
+            }
+        }
+        if (locked.Count > 0)
+        {
+            ServerUnlockLore(locked[Random.Range(0, locked.Count)]);
+        }
+    }
+
+    private void LoadLore()
+    {
+        string saved = PlayerPrefs.GetString(LoreSaveKey, "");
+        foreach (string part in saved.Split(','))
+        {
+            if (int.TryParse(part, out int index) && !unlockedLore.Contains(index))
+            {
+                unlockedLore.Add(index);
+            }
+        }
+    }
+
+    private void SaveLore()
+    {
+        System.Text.StringBuilder text = new System.Text.StringBuilder();
+        foreach (int index in unlockedLore)
+        {
+            if (text.Length > 0)
+            {
+                text.Append(',');
+            }
+            text.Append(index);
+        }
+        PlayerPrefs.SetString(LoreSaveKey, text.ToString());
+        PlayerPrefs.Save();
     }
 
     public void ServerSetBank(int amount)

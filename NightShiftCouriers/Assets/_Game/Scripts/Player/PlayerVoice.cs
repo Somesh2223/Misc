@@ -47,7 +47,9 @@ public class PlayerVoice : MonoBehaviour
         voice.UpdatePosition(gameObject);
 
         // Carrying a radio puts you on the crew's long-range channel too.
-        bool wantRadio = networkPlayer.Inventory != null && networkPlayer.Inventory.HasItem(ItemType.Radio);
+        // Signal Ghosts are always on it, and can ONLY be heard through it (plan 4.10).
+        bool isGhost = networkPlayer.IsDead;
+        bool wantRadio = isGhost || (networkPlayer.Inventory != null && networkPlayer.Inventory.HasItem(ItemType.Radio));
         if (wantRadio && !voice.OnRadio && !joining)
         {
             joining = true;
@@ -58,6 +60,12 @@ public class PlayerVoice : MonoBehaviour
         {
             joining = true;
             await voice.LeaveRadioAsync();
+            joining = false;
+        }
+        else if (voice.OnRadio && voice.RadioOnly != isGhost && !joining)
+        {
+            joining = true;
+            await voice.SetRadioOnlyAsync(isGhost);
             joining = false;
         }
     }

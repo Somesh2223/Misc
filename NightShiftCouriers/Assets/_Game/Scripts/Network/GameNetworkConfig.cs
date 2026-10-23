@@ -33,6 +33,14 @@ public class GameNetworkConfig : MonoBehaviour
     [SerializeField] private ItemCatalog itemCatalog;
     [SerializeField] private ItemPrefabSet itemPrefabs = new ItemPrefabSet();
 
+    [Header("Milestone 4 data")]
+    [SerializeField] private CurseTable curseTable;
+    [SerializeField] private CustomerDirectory customerDirectory;
+    [SerializeField] private LoreBook loreBook;
+    [SerializeField] private RoleCatalog roleCatalog;
+    [SerializeField, Tooltip("The item a dead player drops (plan 4.10).")]
+    private ItemData courierBadge;
+
     [Header("Raft parts (plan 4.4)")]
     [SerializeField] private PackageData raftPartFloaters;
     [SerializeField] private PackageData raftPartPlatform;
@@ -46,6 +54,11 @@ public class GameNetworkConfig : MonoBehaviour
     public int MaxPlayers => maxPlayers;
     public ItemCatalog ItemCatalog => itemCatalog;
     public ItemPrefabSet ItemPrefabs => itemPrefabs;
+    public CurseTable CurseTable => curseTable;
+    public CustomerDirectory CustomerDirectory => customerDirectory;
+    public LoreBook LoreBook => loreBook;
+    public RoleCatalog RoleCatalog => roleCatalog;
+    public ItemData CourierBadge => courierBadge;
     public PackageData RaftPartFloaters => raftPartFloaters;
     public PackageData RaftPartPlatform => raftPartPlatform;
     public PackageData RaftPartLashing => raftPartLashing;

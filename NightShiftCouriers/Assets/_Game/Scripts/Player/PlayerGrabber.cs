@@ -115,6 +115,16 @@ public class PlayerGrabber : NetworkBehaviour
         {
             ThrowServerRpc(cameraTransform.forward);
         }
+
+        // F: open the cursed package you are holding (plan 4.9). Decide together!
+        if (IsHolding && input.OpenPressedThisFrame)
+        {
+            Package package = HeldPackage;
+            if (package != null && package.IsCursed && !package.IsScreaming)
+            {
+                OpenServerRpc();
+            }
+        }
     }
 
     // Things like the shop terminal only open a menu on this machine.
@@ -176,6 +186,18 @@ public class PlayerGrabber : NetworkBehaviour
             held = package;
             heldId.Value = package.NetworkObjectId;
         }
+    }
+
+    [ServerRpc]
+    private void OpenServerRpc()
+    {
+        if (held == null || !held.IsCursed || held.IsScreaming || networkPlayer.IsDead)
+        {
+            return;
+        }
+        Package opened = held;
+        ServerDrop();
+        CurseOutcomes.ServerOpen(opened, networkPlayer);
     }
 
     [ServerRpc]

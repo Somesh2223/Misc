@@ -33,7 +33,11 @@ public class InventoryHUD : MonoBehaviour
             else
             {
                 text += item.displayName;
-                if (item.type == ItemType.Flashlight)
+                if (item.type == ItemType.CourierBadge)
+                {
+                    text += "\n(courier " + inventory.GetPayload(i) + ")";
+                }
+                else if (item.type == ItemType.Flashlight)
                 {
                     text += "\n" + inventory.GetUses(i) + " s" + (inventory.FlashlightOn ? " (ON)" : "");
                 }

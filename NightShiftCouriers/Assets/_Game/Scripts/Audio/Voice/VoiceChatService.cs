@@ -43,6 +43,8 @@ public class VoiceChatService : MonoBehaviour
 
     // True while this player is also on the long-range radio channel (has a radio item).
     public bool OnRadio { get; private set; }
+    // True while this player's voice goes ONLY to the radio channel (they are a Signal Ghost).
+    public bool RadioOnly { get; private set; }
 
     public void SetMode(VoiceMode mode)
     {
@@ -141,6 +143,31 @@ public class VoiceChatService : MonoBehaviour
         }
     }
 
+    // Signal Ghosts (plan 4.10) speak only through radios: transmit on the radio channel alone.
+    public async Task SetRadioOnlyAsync(bool radioOnly)
+    {
+        if (!OnRadio || radioOnly == RadioOnly)
+        {
+            return;
+        }
+        try
+        {
+            if (radioOnly)
+            {
+                await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, radioChannelName);
+            }
+            else
+            {
+                await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.All);
+            }
+            RadioOnly = radioOnly;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Could not change voice transmission: " + e.Message);
+        }
+    }
+
     public async Task LeaveRadioAsync()
     {
         if (!OnRadio || busy)
@@ -159,6 +186,7 @@ public class VoiceChatService : MonoBehaviour
         finally
         {
             OnRadio = false;
+            RadioOnly = false;
             busy = false;
         }
     }
@@ -274,6 +302,7 @@ public class VoiceChatService : MonoBehaviour
     public void UpdatePosition(GameObject speakerAndListener) { }
     public Task<bool> JoinRadioAsync(string radioChannel) { return Task.FromResult(false); }
     public Task LeaveRadioAsync() { return Task.CompletedTask; }
+    public Task SetRadioOnlyAsync(bool radioOnly) { return Task.CompletedTask; }
     private void ApplyTransmit() { }
 #endif
 }

@@ -14,6 +14,7 @@ public class PlayerInventory : NetworkBehaviour
 
     private NetworkList<int> items;   // index into the ItemCatalog, or -1
     private NetworkList<int> uses;    // uses (or flashlight battery seconds) left in each slot
+    private NetworkList<int> payloads; // extra data per slot (a courier badge: whose badge it is)
 
     private readonly NetworkVariable<int> selected = new NetworkVariable<int>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -39,6 +40,7 @@ public class PlayerInventory : NetworkBehaviour
         // NetworkLists must be created before the object is spawned.
         items = new NetworkList<int>();
         uses = new NetworkList<int>();
+        payloads = new NetworkList<int>();
         input = GetComponent<PlayerInputReader>();
         player = GetComponent<NetworkPlayer>();
     }
@@ -84,6 +86,15 @@ public class PlayerInventory : NetworkBehaviour
             return 0;
         }
         return uses[slot];
+    }
+
+    public int GetPayload(int slot)
+    {
+        if (slot < 0 || slot >= payloads.Count)
+        {
+            return 0;
+        }
+        return payloads[slot];
     }
 
     public bool HasItem(ItemType type)
@@ -219,15 +230,17 @@ public class PlayerInventory : NetworkBehaviour
         }
         items.Clear();
         uses.Clear();
+        payloads.Clear();
         for (int i = 0; i < SlotCount; i++)
         {
             items.Add(Empty);
             uses.Add(0);
+            payloads.Add(0);
         }
         flashlightOn.Value = false;
     }
 
-    public bool ServerTryAdd(int catalogIndex)
+    public bool ServerTryAdd(int catalogIndex, int payload = 0)
     {
         ItemData item = Catalog.Get(catalogIndex);
         int slot = FreeSlot();
@@ -237,7 +250,32 @@ public class PlayerInventory : NetworkBehaviour
         }
         items[slot] = catalogIndex;
         uses[slot] = item.uses;
+        payloads[slot] = payload;
         return true;
+    }
+
+    public void ServerRemove(int slot)
+    {
+        if (!IsServer || slot < 0 || slot >= SlotCount)
+        {
+            return;
+        }
+        items[slot] = Empty;
+        uses[slot] = 0;
+        payloads[slot] = 0;
+    }
+
+    // Removes every item of one type (e.g. stale courier badges when the crew is back at the depot).
+    public void ServerRemoveAll(ItemType type)
+    {
+        for (int i = 0; i < items.Count; i++)
+        {
+            ItemData item = Catalog.Get(items[i]);
+            if (item != null && item.type == type)
+            {
+                ServerRemove(i);
+            }
+        }
     }
 
     // Uses up one charge; the item disappears when it has none left.
@@ -250,8 +288,7 @@ public class PlayerInventory : NetworkBehaviour
         uses[slot] = uses[slot] - 1;
         if (uses[slot] <= 0)
         {
-            items[slot] = Empty;
-            uses[slot] = 0;
+            ServerRemove(slot);
         }
     }
 

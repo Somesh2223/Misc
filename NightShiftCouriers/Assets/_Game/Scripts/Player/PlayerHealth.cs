@@ -1,15 +1,17 @@
 using Unity.Netcode;
 using UnityEngine;
 
-// Server-authoritative health with respawn at the spawn point. Real death rules (Signal Ghost) come in Milestone 4.
+// Server-authoritative health (plan 4.10). At 0 the player becomes a Signal Ghost:
+// they drop their courier ID badge, and stay a ghost until a teammate carries the badge
+// to a revive shrine, or the crew returns to the depot.
 public class PlayerHealth : NetworkBehaviour
 {
     [SerializeField] private float maxHealth = 100f;
     [SerializeField, Tooltip("Seconds without damage before health regenerates.")]
     private float regenDelay = 8f;
     [SerializeField] private float regenPerSecond = 5f;
-    [SerializeField, Tooltip("Seconds the 'you died' message shows before respawning.")]
-    private float respawnDelay = 2.5f;
+    [SerializeField, Tooltip("Health after being revived at a shrine (fraction of max).")]
+    private float reviveHealthFraction = 0.5f;
 
     private readonly NetworkVariable<float> health = new NetworkVariable<float>(
         100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -17,7 +19,6 @@ public class PlayerHealth : NetworkBehaviour
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private float timeSinceDamage;
-    private float respawnTimer;
 
     public bool IsDead => dead.Value;
     public float Percent => health.Value / maxHealth;
@@ -28,6 +29,32 @@ public class PlayerHealth : NetworkBehaviour
         {
             health.Value = maxHealth;
             dead.Value = false;
+        }
+        health.OnValueChanged += OnHealthChanged;
+        dead.OnValueChanged += OnDeadChanged;
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        health.OnValueChanged -= OnHealthChanged;
+        dead.OnValueChanged -= OnDeadChanged;
+    }
+
+    // Body cam highlights on the victim's own machine (plan 4.11).
+    private void OnHealthChanged(float previous, float current)
+    {
+        if (IsOwner && current < previous - 10f && current > 0f)
+        {
+            HighlightMoments.Flag("Attacked!", 60);
+        }
+    }
+
+    private void OnDeadChanged(bool previous, bool current)
+    {
+        if (IsOwner && current)
+        {
+            HighlightMoments.Flag("Died", 100);
+            MessageFeed.Show("You are a Signal Ghost now. A teammate can carry your badge to a shrine to revive you.", 8f);
         }
     }
 
@@ -45,19 +72,31 @@ public class PlayerHealth : NetworkBehaviour
 
         if (health.Value <= 0f)
         {
-            dead.Value = true;
-            respawnTimer = respawnDelay;
-
-            PlayerGrabber grabber = GetComponent<PlayerGrabber>();
-            if (grabber != null)
-            {
-                grabber.ServerDrop();
-            }
-            GameEvents.RaisePlayerDied();
+            Die();
         }
     }
 
-    // Server only: full heal (used when a shift restarts).
+    private void Die()
+    {
+        dead.Value = true;
+
+        PlayerGrabber grabber = GetComponent<PlayerGrabber>();
+        if (grabber != null)
+        {
+            grabber.ServerDrop();
+        }
+        GetComponent<PlayerInventory>().ServerSetFlashlight(false);
+
+        // Drop the courier ID badge where we fell, so a teammate can bring us back.
+        NetworkPlayer player = GetComponent<NetworkPlayer>();
+        if (ShiftSpawner.Instance != null)
+        {
+            ShiftSpawner.Instance.ServerDropBadge(player.Position + Vector3.up * 0.3f, OwnerClientId);
+        }
+        GameEvents.RaisePlayerDied();
+    }
+
+    // Server only: full heal (used when the crew returns to the depot).
     public void ServerRevive()
     {
         if (!IsServer)
@@ -68,22 +107,39 @@ public class PlayerHealth : NetworkBehaviour
         dead.Value = false;
     }
 
-    private void Update()
+    // Server only: back from the dead at a shrine, weakened.
+    public void ServerReviveAt(Vector3 position)
     {
-        if (!IsServer)
+        if (!IsServer || !dead.Value)
         {
             return;
         }
+        health.Value = maxHealth * reviveHealthFraction;
+        dead.Value = false;
+        GetComponent<NetworkPlayer>().ServerTeleport(position, 0f);
+        RevivedClientRpc(OwnerOnly());
+    }
 
-        if (dead.Value)
+    [ClientRpc]
+    private void RevivedClientRpc(ClientRpcParams rpcParams = default)
+    {
+        // Revived "at reduced stamina" (plan 4.10).
+        PlayerStamina stamina = GetComponent<PlayerStamina>();
+        stamina.Spend(stamina.Current * 0.7f);
+        MessageFeed.Show("You're back! Weak and out of breath, but alive.");
+    }
+
+    private ClientRpcParams OwnerOnly()
+    {
+        ClientRpcParams rpcParams = default;
+        rpcParams.Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { OwnerClientId } };
+        return rpcParams;
+    }
+
+    private void Update()
+    {
+        if (!IsServer || dead.Value)
         {
-            respawnTimer -= Time.deltaTime;
-            if (respawnTimer <= 0f)
-            {
-                health.Value = maxHealth;
-                dead.Value = false;
-                GetComponent<NetworkPlayer>().ServerRespawn();
-            }
             return;
         }
 
@@ -108,13 +164,5 @@ public class PlayerHealth : NetworkBehaviour
         GUI.color = new Color(0.85f, 0.15f, 0.15f);
         GUI.DrawTexture(new Rect(back.x, back.y, back.width * Percent, back.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
-
-        if (dead.Value)
-        {
-            GUIStyle style = new GUIStyle(GUI.skin.label);
-            style.fontSize = 48;
-            style.alignment = TextAnchor.MiddleCenter;
-            GUI.Label(new Rect(0, 0, Screen.width, Screen.height), "YOU DIED", style);
-        }
     }
 }

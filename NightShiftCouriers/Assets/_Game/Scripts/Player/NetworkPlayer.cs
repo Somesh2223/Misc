@@ -43,6 +43,9 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<float> netYaw = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    // The role this player picked at the depot (plan 4.7). Index into the RoleCatalog.
+    private readonly NetworkVariable<int> netRole = new NetworkVariable<int>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<float> netPitch = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<float> netWaterDepth = new NetworkVariable<float>(
@@ -60,6 +63,7 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
     private PlayerController controller;
     private PlayerHealth health;
     private PlayerInventory inventory;
+    private PlayerStamina stamina;
     private CharacterController characterController;
 
     // Server-side speed check
@@ -69,6 +73,28 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
 
     public PlayerHealth Health => health;
     public PlayerInventory Inventory => inventory;
+    public Camera PlayerCamera => cameraTransform != null ? cameraTransform.GetComponent<Camera>() : null;
+    public int RoleIndex => netRole.Value;
+
+    public RoleData Role
+    {
+        get
+        {
+            RoleCatalog catalog = GameNetworkConfig.Instance != null ? GameNetworkConfig.Instance.RoleCatalog : null;
+            return catalog != null ? catalog.Get(netRole.Value) : null;
+        }
+    }
+
+    public RolePassive Passive => Role != null ? Role.passive : RolePassive.None;
+
+    // Owner: pick a role (only in the depot).
+    public void ChooseRole(int index)
+    {
+        if (IsOwner)
+        {
+            netRole.Value = index;
+        }
+    }
     public float Yaw => netYaw.Value;
     public float Pitch => netPitch.Value;
     // Where the player is looking (from the synced yaw and pitch).
@@ -90,6 +116,7 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         controller = GetComponent<PlayerController>();
         health = GetComponent<PlayerHealth>();
         inventory = GetComponent<PlayerInventory>();
+        stamina = GetComponent<PlayerStamina>();
         characterController = GetComponent<CharacterController>();
     }
 
@@ -142,7 +169,7 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         foreach (Behaviour behaviour in GetComponents<Behaviour>())
         {
             if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter || behaviour is PlayerVoice
-                || behaviour is LocalMicrophone)
+                || behaviour is LocalMicrophone || behaviour is BodyCam || behaviour is RetroCameraEffect)
             {
                 behaviour.enabled = true;
             }
@@ -210,9 +237,15 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         else
         {
             FollowOwner();
+            // Signal Ghosts are invisible to the living (and cannot be bumped into).
+            bool showBody = !IsDead;
+            if (bodyVisual != null && bodyVisual.activeSelf != showBody)
+            {
+                bodyVisual.SetActive(showBody);
+            }
         }
 
-        if (IsServer && !IsOwner)
+        if (IsServer && !IsOwner && !IsDead)
         {
             CheckRemoteSpeed();
         }
@@ -220,6 +253,11 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
 
     private void PublishLocalState()
     {
+        // Runner: more stamina and faster climbing (plan 4.7).
+        bool runner = Passive == RolePassive.Runner;
+        stamina.SetMaxMultiplier(runner ? 1.4f : 1f);
+        controller.ClimbSpeedMultiplier = runner ? 1.3f : 1f;
+
         netPosition.Value = transform.position;
         netYaw.Value = transform.eulerAngles.y;
         netPitch.Value = controller.Pitch;
@@ -294,6 +332,13 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         }
     }
 
+    // Server: move this player somewhere (revive at a shrine).
+    public void ServerTeleport(Vector3 position, float yaw)
+    {
+        lastCheckedPosition = position;
+        TeleportOwnerClientRpc(position, yaw, OwnerOnly());
+    }
+
     public void ServerAddImpulse(Vector3 velocity)
     {
         ImpulseClientRpc(velocity, OwnerOnly());
@@ -355,6 +400,10 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
     // so a cheater cannot fake noise from somewhere else.
     public void ReportNoise(float loudness, bool fromWater)
     {
+        if (IsDead)
+        {
+            return; // ghosts make no sound in the living world
+        }
         if (IsServer)
         {
             GameEvents.RaiseNoise(Position, Mathf.Clamp(loudness, 0f, 10f), fromWater);
@@ -368,6 +417,10 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
     [ServerRpc]
     private void ReportNoiseServerRpc(float loudness, bool fromWater)
     {
+        if (IsDead)
+        {
+            return;
+        }
         GameEvents.RaiseNoise(Position, Mathf.Clamp(loudness, 0f, 10f), fromWater);
     }
 }

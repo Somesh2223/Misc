@@ -22,14 +22,28 @@ public class DeliveryManager : NetworkBehaviour
 
     private readonly NetworkVariable<int> money = new NetworkVariable<int>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // "address|address|..." of tonight's orders, so the journal can show each customer's note.
+    private readonly NetworkVariable<FixedString512Bytes> orderAddresses = new NetworkVariable<FixedString512Bytes>(
+        default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<FixedString512Bytes> orderSummary = new NetworkVariable<FixedString512Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private readonly List<DeliveryOrder> orders = new List<DeliveryOrder>();
+    private readonly Dictionary<string, int> knocks = new Dictionary<string, int>();
 
     // Money earned this shift (paid into the campaign bank when the shift ends).
     public int Money => money.Value;
     public string OrderSummary => orderSummary.Value.ToString();
+
+    // Tonight's delivery addresses (every machine).
+    public string[] OrderAddresses
+    {
+        get
+        {
+            string all = orderAddresses.Value.ToString();
+            return all == "" ? new string[0] : all.Split('|');
+        }
+    }
 
     // Server: true once every order is delivered or lost.
     public bool AllOrdersResolved
@@ -111,6 +125,26 @@ public class DeliveryManager : NetworkBehaviour
         }
 
         int payout = CalculatePayout(package);
+
+        // The customer's rule (plan 4.8): a bonus for following it, trouble for breaking it.
+        CustomerData customer = GameNetworkConfig.Instance.CustomerDirectory.Find(order.address);
+        if (customer != null && customer.rule != CustomerRule.None && customer.rule != CustomerRule.NobodyAnswers)
+        {
+            if (RuleFollowed(customer, point.transform.position))
+            {
+                payout = Mathf.RoundToInt(payout * customer.ruleBonus);
+                MessageClientRpc(new FixedString128Bytes(customer.customerName + " seems pleased. Bonus pay!"));
+            }
+            else
+            {
+                RuleBroken(customer, point.transform.position);
+            }
+        }
+        if (customer != null && customer.loreEntry >= 0)
+        {
+            CampaignManager.Instance.ServerUnlockLore(customer.loreEntry);
+        }
+
         order.status = OrderStatus.Delivered;
         order.payout = payout;
         money.Value += payout;
@@ -119,6 +153,102 @@ public class DeliveryManager : NetworkBehaviour
 
         package.ServerMarkDelivered();
         RebuildSummary();
+    }
+
+    // Extra money from outside a delivery (cash in a cursed package).
+    public void ServerAddBonus(int amount)
+    {
+        money.Value += amount;
+    }
+
+    // A cursed package was opened and is gone: its order is lost, quietly.
+    public void ServerMarkOpened(Package package)
+    {
+        DeliveryOrder order = FindOrder(package);
+        if (order != null && order.status == OrderStatus.Pending)
+        {
+            order.status = OrderStatus.Lost;
+            RebuildSummary();
+        }
+    }
+
+    // ---------- Customer rules ----------
+
+    public void ServerKnock(string address, Vector3 doorPosition)
+    {
+        knocks.TryGetValue(address, out int count);
+        count++;
+        knocks[address] = count;
+        KnockClientRpc(doorPosition);
+
+        CustomerData customer = GameNetworkConfig.Instance.CustomerDirectory.Find(address);
+        if (customer != null && customer.rule == CustomerRule.KnockOnce && count == 2)
+        {
+            // Something answers the second knock.
+            RuleBroken(customer, doorPosition);
+        }
+    }
+
+    private bool RuleFollowed(CustomerData customer, Vector3 doorPosition)
+    {
+        switch (customer.rule)
+        {
+            case CustomerRule.ComeAlone:
+                return CountPlayersNear(doorPosition, 10f, false) <= 1;
+            case CustomerRule.NoLights:
+                return CountPlayersNear(doorPosition, 10f, true) == 0;
+            case CustomerRule.BeforeSecondRise:
+                return FloodManager.Instance == null || FloodManager.Instance.StageIndex < 2;
+            case CustomerRule.KnockOnce:
+                knocks.TryGetValue(customer.address, out int count);
+                return count == 1;
+        }
+        return true;
+    }
+
+    private static int CountPlayersNear(Vector3 position, float radius, bool onlyWithLights)
+    {
+        int count = 0;
+        foreach (NetworkPlayer player in NetworkPlayer.All)
+        {
+            if (player.IsDead || Vector3.Distance(player.Position, position) > radius)
+            {
+                continue;
+            }
+            if (onlyWithLights && (player.Inventory == null || !player.Inventory.FlashlightOn))
+            {
+                continue;
+            }
+            count++;
+        }
+        return count;
+    }
+
+    // Breaking a rule can trigger an event (plan 4.8): something comes for you, or a strange "gift" appears.
+    private void RuleBroken(CustomerData customer, Vector3 doorPosition)
+    {
+        float roll = Random.value;
+        if (roll < 0.5f)
+        {
+            MessageClientRpc(new FixedString128Bytes("You broke " + customer.customerName + "'s rule. Something is coming..."));
+            ShiftSpawner.Instance.ServerSpawnMonster(MonsterKind.Chudail, doorPosition + Vector3.back * 6f);
+        }
+        else if (roll < 0.8f)
+        {
+            MessageClientRpc(new FixedString128Bytes("A package is left on the step for you. It is warm."));
+            ShiftSpawner.Instance.ServerSpawnPackage(GameNetworkConfig.Instance.PackageCatalog.Get(0),
+                doorPosition + Vector3.up * 0.5f, "", true);
+        }
+        else
+        {
+            MessageClientRpc(new FixedString128Bytes("Behind the door, someone laughs at you."));
+        }
+    }
+
+    [ClientRpc]
+    private void KnockClientRpc(Vector3 doorPosition)
+    {
+        ProceduralSounds.PlayAt(ProceduralSounds.Bang, doorPosition, 0.3f, 15f);
     }
 
     // Money = base value x condition x speed bonus (plan section 4.15).
@@ -194,6 +324,22 @@ public class DeliveryManager : NetworkBehaviour
             result = result.Substring(0, 450);
         }
         orderSummary.Value = new FixedString512Bytes(result);
+
+        StringBuilder addresses = new StringBuilder();
+        foreach (DeliveryOrder order in orders)
+        {
+            if (addresses.Length > 0)
+            {
+                addresses.Append('|');
+            }
+            addresses.Append(order.address);
+        }
+        string addressText = addresses.ToString();
+        if (addressText.Length > 450)
+        {
+            addressText = addressText.Substring(0, 450);
+        }
+        orderAddresses.Value = new FixedString512Bytes(addressText);
     }
 
     [ClientRpc]

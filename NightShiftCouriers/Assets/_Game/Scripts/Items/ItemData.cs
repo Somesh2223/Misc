@@ -16,4 +16,6 @@ public class ItemData : ScriptableObject
     [Tooltip("Charm only: the monster type that cannot see you.")]
     public MonsterKind charmAgainst = MonsterKind.Vetala;
     public Color color = Color.white;
+    [Tooltip("Shown in the depot shop. Off for things you can only find (courier badges).")]
+    public bool inShop = true;
 }
