@@ -44,7 +44,8 @@ namespace Netcode.Transports.Facepunch
         // so Steam callbacks are pumped from Unity's Update instead.
         private void Update()
         {
-            SteamClient.RunCallbacks();
+            if (SteamClient.IsValid)
+                SteamClient.RunCallbacks();
 
             if (!m_SteamInitialized && SteamClient.IsValid)
             {
