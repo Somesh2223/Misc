@@ -67,6 +67,7 @@ public class PlayerController : MonoBehaviour
     private bool isSprinting;
     private bool isSwimming;
     private float waterDepth;
+    private Vector3 externalVelocity; // shoves from monsters etc., fades out
 
     public bool IsCrouching => isCrouching;
     public bool IsSprinting => isSprinting;
@@ -91,8 +92,15 @@ public class PlayerController : MonoBehaviour
         Cursor.visible = false;
     }
 
+    // Gives the player a push (e.g. a monster dragging them down). Fades out quickly.
+    public void AddImpulse(Vector3 velocity)
+    {
+        externalVelocity += velocity;
+    }
+
     private void Update()
     {
+        externalVelocity = Vector3.MoveTowards(externalVelocity, Vector3.zero, 6f * Time.deltaTime);
         HandleCursorToggle();
         UpdateWaterState();
         HandleLook();
@@ -247,7 +255,7 @@ public class PlayerController : MonoBehaviour
 
         verticalVelocity += gravity * Time.deltaTime;
 
-        Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity;
+        Vector3 velocity = horizontalVelocity + Vector3.up * verticalVelocity + externalVelocity;
         controller.Move(velocity * Time.deltaTime);
         return spentStamina;
     }
@@ -299,7 +307,7 @@ public class PlayerController : MonoBehaviour
         currentVelocity = Vector3.MoveTowards(currentVelocity, targetVelocity, acceleration * 0.5f * Time.deltaTime);
         horizontalVelocity = new Vector3(currentVelocity.x, 0f, currentVelocity.z);
 
-        Vector3 move = new Vector3(currentVelocity.x, currentVelocity.y, currentVelocity.z);
+        Vector3 move = currentVelocity + externalVelocity;
         controller.Move(move * Time.deltaTime);
 
         // Keep the head from leaving the water too far (can't fly out of the surface).

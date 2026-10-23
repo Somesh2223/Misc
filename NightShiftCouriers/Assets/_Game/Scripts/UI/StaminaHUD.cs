@@ -31,7 +31,7 @@ public class StaminaHUD : MonoBehaviour
         else if (player.IsSprinting) state = "Sprinting";
         else if (!player.IsGrounded) state = "In air";
 
-        GUI.Label(new Rect(20, Screen.height - 85, 400, 40),
+        GUI.Label(new Rect(20, Screen.height - 110, 400, 40),
             "State: " + state + "\nWater depth: " + player.WaterDepth.ToString("0.00") + " m  Speed: " + player.CurrentSpeed.ToString("0.0"));
     }
 }
