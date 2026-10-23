@@ -202,15 +202,25 @@ public class NetworkBootstrap : MonoBehaviour
         string role = network.IsHost ? "Hosting" : "Connected";
         GUILayout.Label(role + " - crew: " + network.ConnectedClientsIds.Count + "/" + config.MaxPlayers);
 
-        bool shiftStarted = FloodManager.Instance != null; // the flood manager exists only while a shift runs
-        if (network.IsServer && !shiftStarted)
+        CampaignManager campaign = CampaignManager.Instance;
+        if (campaign != null)
         {
-            if (GUILayout.Button("START SHIFT")) ShiftSpawner.Instance.StartShift();
-            GUILayout.Label("Wait for your crew to join first.");
-        }
-        else if (!network.IsServer && !shiftStarted)
-        {
-            GUILayout.Label("Waiting for the host to start the shift...");
+            if (campaign.Phase == ShiftPhase.Depot)
+            {
+                if (network.IsServer)
+                {
+                    if (GUILayout.Button("START SHIFT")) ShiftSpawner.Instance.StartShift();
+                    GUILayout.Label("Wait for your crew to join first.");
+                }
+                else
+                {
+                    GUILayout.Label("Waiting for the host to start the shift...");
+                }
+            }
+            else if (campaign.Phase == ShiftPhase.Results && network.IsServer)
+            {
+                if (GUILayout.Button("RETURN TO DEPOT")) ShiftSpawner.Instance.ReturnToDepot();
+            }
         }
 
         VoiceChatService voice = VoiceChatService.Instance;

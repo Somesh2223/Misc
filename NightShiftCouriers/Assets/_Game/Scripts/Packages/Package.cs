@@ -16,6 +16,12 @@ public class Package : NetworkBehaviour
     [SerializeField, Tooltip("Water drag so packages do not rocket around underwater.")]
     private float waterDrag = 3f;
 
+    [Header("Possession")]
+    [SerializeField, Tooltip("Value lost per second while possessed (0.02 = 2% per second).")]
+    private float possessionLossPerSecond = 0.02f;
+    [SerializeField, Tooltip("Most value a possession can take away (0.5 = half).")]
+    private float maxPossessionPenalty = 0.5f;
+
     [Header("Holding")]
     [SerializeField, Tooltip("How hard the package is pulled to the hold point. Higher = stiffer.")]
     private float holdStrength = 12f;
@@ -33,6 +39,11 @@ public class Package : NetworkBehaviour
         100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<float> wetness = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    // Vetala possession (plan 4.6): heavier, loses value over time, and screams.
+    private readonly NetworkVariable<bool> possessed = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<float> possessionPenalty = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<bool> delivered = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
@@ -46,10 +57,19 @@ public class Package : NetworkBehaviour
     private string pendingDestination = "";
     private float wetSeconds;
     private float spawnTime;
+    private static readonly List<Package> allPackages = new List<Package>();
+
+    private ulong possessionVictim;
+    private float possessionSeconds;
     private readonly List<PlayerGrabber> holders = new List<PlayerGrabber>();
     private readonly List<PlayerGrabber> tooFar = new List<PlayerGrabber>();
 
+    // Every spawned package (used by raft spots and the Vetala).
+    public static IReadOnlyList<Package> All => allPackages;
+
     public PackageData Data => data;
+    public bool IsPossessed => possessed.Value;
+    public ulong PossessionVictim => possessionVictim;
     public Rigidbody Body => body;
     public string DestinationAddress => destination.Value.ToString();
     public bool IsDelivered => delivered.Value;
@@ -80,6 +100,7 @@ public class Package : NetworkBehaviour
             {
                 result *= 1f - Mathf.Clamp01(wetness.Value / data.secondsToRuin);
             }
+            result *= 1f - possessionPenalty.Value;
             return result;
         }
     }
@@ -99,6 +120,7 @@ public class Package : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        allPackages.Add(this);
         if (IsServer)
         {
             dataIndex.Value = pendingDataIndex;
@@ -124,13 +146,16 @@ public class Package : NetworkBehaviour
 
         health.OnValueChanged += OnConditionChanged;
         wetness.OnValueChanged += OnConditionChanged;
+        possessionPenalty.OnValueChanged += OnConditionChanged;
         UpdateLook();
     }
 
     public override void OnNetworkDespawn()
     {
+        allPackages.Remove(this);
         health.OnValueChanged -= OnConditionChanged;
         wetness.OnValueChanged -= OnConditionChanged;
+        possessionPenalty.OnValueChanged -= OnConditionChanged;
 
         if (IsServer)
         {
@@ -162,6 +187,7 @@ public class Package : NetworkBehaviour
         }
         HandleWater();
         HandleHolding();
+        HandlePossession();
     }
 
     private void HandleWater()
@@ -270,6 +296,56 @@ public class Package : NetworkBehaviour
 
         // Hard impacts are loud
         GameEvents.RaiseNoise(transform.position, Mathf.Clamp(impactSpeed, 1f, 10f), false);
+    }
+
+    // ---------- Server: possession ----------
+
+    private void HandlePossession()
+    {
+        if (!possessed.Value)
+        {
+            return;
+        }
+
+        possessionSeconds += Time.fixedDeltaTime;
+        float penalty = Mathf.Min(maxPossessionPenalty, possessionSeconds * possessionLossPerSecond);
+        if (penalty - possessionPenalty.Value >= 0.02f) // send in small steps
+        {
+            possessionPenalty.Value = penalty;
+        }
+    }
+
+    // victim = the player carrying it when the Vetala latched on. Handing it to someone else breaks the spell.
+    public void ServerSetPossessed(bool isPossessed, ulong victim)
+    {
+        possessed.Value = isPossessed;
+        possessionVictim = victim;
+        body.mass = data.mass * (isPossessed ? data.possessedMassMultiplier : 1f);
+        RefreshLoads();
+    }
+
+    // The OwnerClientIds of everyone holding it right now (server).
+    public bool ServerIsHeldBySomeoneOtherThan(ulong clientId)
+    {
+        foreach (PlayerGrabber holder in holders)
+        {
+            if (holder != null && holder.OwnerClientId != clientId)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Repair kit (plan 4.5). Returns false if there was nothing to fix.
+    public bool ServerRepair(float amount)
+    {
+        if (!data.isFragile || health.Value >= data.maxHealth)
+        {
+            return false;
+        }
+        health.Value = Mathf.Min(data.maxHealth, health.Value + amount);
+        return true;
     }
 
     // ---------- Server: holders ----------

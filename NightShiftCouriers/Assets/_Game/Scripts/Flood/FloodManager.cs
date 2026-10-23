@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 
 // The flood clock (section 4.3). SERVER-authoritative: only the server runs the timers.
 // Clients receive the stage and the water height and move their local water to match.
+// When the last stage runs out it is dawn: the shift ends and players outside the depot extraction are lost.
 public class FloodManager : NetworkBehaviour
 {
     public static FloodManager Instance { get; private set; }
@@ -22,6 +23,8 @@ public class FloodManager : NetworkBehaviour
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<float> waterHeight = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<bool> dawn = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<int> secondsUntilRise = new NetworkVariable<int>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
@@ -33,7 +36,9 @@ public class FloodManager : NetworkBehaviour
     public int StageCount => settings.stages.Length;
     public string StageName => settings.stages[Mathf.Clamp(stage.Value, 0, settings.stages.Length - 1)].name;
     public bool IsLastStage => stage.Value >= settings.stages.Length - 1;
-    public float SecondsUntilNextRise => IsLastStage ? 0f : secondsUntilRise.Value;
+    // Seconds until the next rise (or, on the last stage, until dawn).
+    public float SecondsUntilNextRise => secondsUntilRise.Value;
+    public bool IsDawn => dawn.Value;
     public float CurrentWaterHeight => waterHeight.Value;
 
     public override void OnNetworkSpawn()
@@ -107,7 +112,7 @@ public class FloodManager : NetworkBehaviour
 
         MoveWaterTowardTarget();
 
-        if (IsLastStage)
+        if (dawn.Value)
         {
             return;
         }
@@ -118,12 +123,26 @@ public class FloodManager : NetworkBehaviour
         if (!warned && stageTimer <= settings.warningSeconds)
         {
             warned = true;
-            WarningClientRpc(stage.Value + 1, Mathf.Max(0f, stageTimer));
+            if (IsLastStage)
+            {
+                DawnWarningClientRpc();
+            }
+            else
+            {
+                WarningClientRpc(stage.Value + 1, Mathf.Max(0f, stageTimer));
+            }
         }
 
         if (stageTimer <= 0f)
         {
-            StartNextStage();
+            if (IsLastStage)
+            {
+                dawn.Value = true;
+            }
+            else
+            {
+                StartNextStage();
+            }
         }
     }
 
@@ -157,6 +176,12 @@ public class FloodManager : NetworkBehaviour
     private void WarningClientRpc(int nextStage, float secondsLeft)
     {
         GameEvents.RaiseFloodWarning(nextStage, secondsLeft);
+    }
+
+    [ClientRpc]
+    private void DawnWarningClientRpc()
+    {
+        MessageFeed.Show("Dawn is coming! Get back to the depot extraction or be left behind.", 8f);
     }
 
     // ---------- Clients ----------

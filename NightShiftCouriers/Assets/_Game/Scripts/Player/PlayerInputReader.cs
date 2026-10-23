@@ -12,6 +12,8 @@ public class PlayerInputReader : MonoBehaviour
     private InputAction jumpAction;
     private InputAction interactAction;
     private InputAction throwAction;
+    private InputAction useAction;
+    private readonly InputAction[] slotActions = new InputAction[4];
 
     public Vector2 Move => moveAction.ReadValue<Vector2>();
     public Vector2 Look => lookAction.ReadValue<Vector2>();
@@ -21,6 +23,23 @@ public class PlayerInputReader : MonoBehaviour
     public bool JumpPressedThisFrame => jumpAction.WasPressedThisFrame();
     public bool InteractPressedThisFrame => interactAction.WasPressedThisFrame();
     public bool ThrowPressedThisFrame => throwAction.WasPressedThisFrame();
+    public bool UsePressedThisFrame => useAction.WasPressedThisFrame();
+
+    // The inventory slot (0-3) whose number key was pressed this frame, or -1.
+    public int SlotPressedThisFrame
+    {
+        get
+        {
+            for (int i = 0; i < slotActions.Length; i++)
+            {
+                if (slotActions[i].WasPressedThisFrame())
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+    }
 
     private void Awake()
     {
@@ -51,6 +70,14 @@ public class PlayerInputReader : MonoBehaviour
 
         throwAction = new InputAction("Throw", InputActionType.Button, "<Mouse>/leftButton");
         throwAction.AddBinding("<Gamepad>/rightTrigger");
+
+        useAction = new InputAction("Use", InputActionType.Button, "<Mouse>/rightButton");
+        useAction.AddBinding("<Gamepad>/leftTrigger");
+
+        for (int i = 0; i < slotActions.Length; i++)
+        {
+            slotActions[i] = new InputAction("Slot" + (i + 1), InputActionType.Button, "<Keyboard>/" + (i + 1));
+        }
     }
 
     private void OnEnable()
@@ -62,6 +89,11 @@ public class PlayerInputReader : MonoBehaviour
         jumpAction.Enable();
         interactAction.Enable();
         throwAction.Enable();
+        useAction.Enable();
+        foreach (InputAction slot in slotActions)
+        {
+            slot.Enable();
+        }
     }
 
     private void OnDisable()
@@ -73,5 +105,10 @@ public class PlayerInputReader : MonoBehaviour
         jumpAction.Disable();
         interactAction.Disable();
         throwAction.Disable();
+        useAction.Disable();
+        foreach (InputAction slot in slotActions)
+        {
+            slot.Disable();
+        }
     }
 }

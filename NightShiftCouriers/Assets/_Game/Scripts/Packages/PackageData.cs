@@ -15,6 +15,12 @@ public class PackageData : ScriptableObject
     [Tooltip("Box size in metres.")]
     public Vector3 size = new Vector3(0.5f, 0.4f, 0.5f);
     public Color color = new Color(0.8f, 0.6f, 0.3f);
+    [Tooltip("If this is a raft part (plan 4.4), which one. Raft parts have no delivery address.")]
+    public RaftPartType raftPart = RaftPartType.None;
+
+    [Header("Vetala possession")]
+    [Tooltip("Mass multiplier while a Vetala has latched onto this package.")]
+    public float possessedMassMultiplier = 2.5f;
 
     [Header("Fragile")]
     public bool isFragile = false;

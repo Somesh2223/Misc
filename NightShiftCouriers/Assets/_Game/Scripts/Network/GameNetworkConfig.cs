@@ -9,6 +9,19 @@ using UnityEngine;
 [RequireComponent(typeof(NetworkManager))]
 public class GameNetworkConfig : MonoBehaviour
 {
+    // Prefabs that items and raft spots spawn while playing.
+    [Serializable]
+    public class ItemPrefabSet
+    {
+        public GameObject rope;
+        public GameObject plank;
+        public GameObject decoy;
+        public GameObject saltWard;
+        public GameObject glowStick;
+        public GameObject worldItem;
+        public GameObject raft;
+    }
+
     public static GameNetworkConfig Instance { get; private set; }
 
     [SerializeField] private GameObject playerPrefab;
@@ -17,12 +30,25 @@ public class GameNetworkConfig : MonoBehaviour
     [SerializeField] private PackageCatalog packageCatalog;
     [SerializeField, Tooltip("How this scene's flood behaves (stage heights and timings).")]
     private FloodSettings floodSettings;
+    [SerializeField] private ItemCatalog itemCatalog;
+    [SerializeField] private ItemPrefabSet itemPrefabs = new ItemPrefabSet();
+
+    [Header("Raft parts (plan 4.4)")]
+    [SerializeField] private PackageData raftPartFloaters;
+    [SerializeField] private PackageData raftPartPlatform;
+    [SerializeField] private PackageData raftPartLashing;
+
     [SerializeField, Tooltip("Crew size limit (plan: 2-4 players).")]
     private int maxPlayers = 4;
 
     public PackageCatalog PackageCatalog => packageCatalog;
     public FloodSettings FloodSettings => floodSettings;
     public int MaxPlayers => maxPlayers;
+    public ItemCatalog ItemCatalog => itemCatalog;
+    public ItemPrefabSet ItemPrefabs => itemPrefabs;
+    public PackageData RaftPartFloaters => raftPartFloaters;
+    public PackageData RaftPartPlatform => raftPartPlatform;
+    public PackageData RaftPartLashing => raftPartLashing;
 
     private void Awake()
     {

@@ -3,7 +3,6 @@ using System.Text;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 // Tracks the night's orders: pick up -> deliver -> get paid. SERVER-authoritative (plan section 5):
 // money, payouts and orders are decided on the server and copied to every player's HUD.
@@ -23,29 +22,33 @@ public class DeliveryManager : NetworkBehaviour
 
     private readonly NetworkVariable<int> money = new NetworkVariable<int>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    private readonly NetworkVariable<int> quota = new NetworkVariable<int>(
-        400, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    private readonly NetworkVariable<bool> shiftOver = new NetworkVariable<bool>(
-        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     private readonly NetworkVariable<FixedString512Bytes> orderSummary = new NetworkVariable<FixedString512Bytes>(
         default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private readonly List<DeliveryOrder> orders = new List<DeliveryOrder>();
-    private int pendingQuota = 400;
-    private string lastMessage = "";
-    private float messageTimer;
 
-    public int Quota => quota.Value;
+    // Money earned this shift (paid into the campaign bank when the shift ends).
     public int Money => money.Value;
-    public bool ShiftOver => shiftOver.Value;
-    public bool QuotaMet => money.Value >= quota.Value;
     public string OrderSummary => orderSummary.Value.ToString();
-    public string Message => messageTimer > 0f ? lastMessage : "";
 
-    // Server: call before Spawn().
-    public void ServerInit(int quotaAmount)
+    // Server: true once every order is delivered or lost.
+    public bool AllOrdersResolved
     {
-        pendingQuota = quotaAmount;
+        get
+        {
+            if (orders.Count == 0)
+            {
+                return false;
+            }
+            foreach (DeliveryOrder order in orders)
+            {
+                if (order.status == OrderStatus.Pending)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     public override void OnNetworkSpawn()
@@ -53,9 +56,7 @@ public class DeliveryManager : NetworkBehaviour
         Instance = this;
         if (IsServer)
         {
-            quota.Value = pendingQuota;
             money.Value = 0;
-            shiftOver.Value = false;
         }
     }
 
@@ -87,21 +88,11 @@ public class DeliveryManager : NetworkBehaviour
 
     private void Update()
     {
-        messageTimer -= Time.deltaTime;
-
         if (!IsServer || !IsSpawned)
         {
             return;
         }
-
         CheckForLostPackages();
-        CheckShiftOver();
-
-        if (shiftOver.Value && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame
-            && ShiftSpawner.Instance != null)
-        {
-            ShiftSpawner.Instance.RestartShift();
-        }
     }
 
     // Called by a DeliveryPoint when a loose package sits inside it (server only).
@@ -183,23 +174,6 @@ public class DeliveryManager : NetworkBehaviour
         }
     }
 
-    private void CheckShiftOver()
-    {
-        if (shiftOver.Value || orders.Count == 0)
-        {
-            return;
-        }
-
-        foreach (DeliveryOrder order in orders)
-        {
-            if (order.status == OrderStatus.Pending)
-            {
-                return;
-            }
-        }
-        shiftOver.Value = true;
-    }
-
     private void RebuildSummary()
     {
         StringBuilder text = new StringBuilder();
@@ -225,7 +199,6 @@ public class DeliveryManager : NetworkBehaviour
     [ClientRpc]
     private void MessageClientRpc(FixedString128Bytes text)
     {
-        lastMessage = text.ToString();
-        messageTimer = 4f;
+        MessageFeed.Show(text.ToString());
     }
 }

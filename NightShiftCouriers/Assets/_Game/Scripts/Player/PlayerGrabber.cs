@@ -40,6 +40,8 @@ public class PlayerGrabber : NetworkBehaviour
     private Package held; // server only
 
     public bool IsHolding => heldId.Value != NoPackage;
+    // The package this player holds, on the server (null elsewhere or when empty-handed).
+    public Package ServerHeldPackage => held;
 
     public Package HeldPackage
     {
@@ -103,7 +105,7 @@ public class PlayerGrabber : NetworkBehaviour
             {
                 DropServerRpc();
             }
-            else
+            else if (!TryLocalInteract())
             {
                 GrabServerRpc(cameraTransform.position, cameraTransform.forward);
             }
@@ -113,6 +115,23 @@ public class PlayerGrabber : NetworkBehaviour
         {
             ThrowServerRpc(cameraTransform.forward);
         }
+    }
+
+    // Things like the shop terminal only open a menu on this machine.
+    private bool TryLocalInteract()
+    {
+        if (!Physics.Raycast(cameraTransform.position, cameraTransform.forward, out RaycastHit hit, grabRange, ~0, QueryTriggerInteraction.Ignore))
+        {
+            return false;
+        }
+
+        ILocalInteractable local = hit.collider.GetComponentInParent<ILocalInteractable>();
+        if (local == null)
+        {
+            return false;
+        }
+        local.LocalInteract();
+        return true;
     }
 
     // ---------- Server: decisions ----------
@@ -137,7 +156,17 @@ public class PlayerGrabber : NetworkBehaviour
         }
 
         Package package = hit.collider.GetComponentInParent<Package>();
-        if (package == null || !package.IsSpawned)
+        if (package == null)
+        {
+            // Not a package: maybe an item to pick up, a raft spot, or a climbing teammate.
+            IServerInteractable interactable = hit.collider.GetComponentInParent<IServerInteractable>();
+            if (interactable != null && !ReferenceEquals(interactable, networkPlayer))
+            {
+                interactable.ServerInteract(networkPlayer);
+            }
+            return;
+        }
+        if (!package.IsSpawned)
         {
             return;
         }

@@ -19,6 +19,8 @@ public class PlayerNoise : MonoBehaviour
     private float splashMultiplier = 2f;
     [SerializeField, Tooltip("Loudness of swimming.")]
     private float swimLoudness = 2.5f;
+    [SerializeField, Tooltip("Extra loudness when soaked (sloshing clothes). 0.5 = +50% at full wetness.")]
+    private float soakedLoudnessBonus = 0.5f;
 
     private PlayerController player;
     private NetworkPlayer networkPlayer;
@@ -64,6 +66,7 @@ public class PlayerNoise : MonoBehaviour
             loudness = swimLoudness;
         }
 
+        loudness *= 1f + soakedLoudnessBonus * player.Wetness;
         networkPlayer.ReportNoise(loudness, inWater);
     }
 }

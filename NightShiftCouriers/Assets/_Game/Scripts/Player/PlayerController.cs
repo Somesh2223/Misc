@@ -2,8 +2,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // First-person controller built on CharacterController (section 4.1).
-// Walk, sprint, crouch, jump, swim, and a shared stamina pool.
-// Movement is owner-side only for now; networking comes in Milestone 2.
+// Walk, sprint, crouch, jump, swim, climb, a shared stamina pool, and wetness.
+// Only the owner runs this; NetworkPlayer publishes the result to everyone else.
+[DefaultExecutionOrder(100)] // after moving platforms (rafts) have moved
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(PlayerInputReader))]
 [RequireComponent(typeof(PlayerStamina))]
@@ -55,6 +56,28 @@ public class PlayerController : MonoBehaviour
     [SerializeField, Tooltip("How fast you rise/sink while swimming.")]
     private float swimVerticalSpeed = 2.5f;
 
+    [Header("Climbing")]
+    [SerializeField, Tooltip("How far in front of you a climbable surface can be grabbed (metres).")]
+    private float climbReach = 0.8f;
+    [SerializeField] private float climbSpeed = 2f;
+    [SerializeField, Tooltip("Stamina per second just for holding on.")]
+    private float climbHoldCostPerSecond = 6f;
+    [SerializeField, Tooltip("Extra stamina per second while moving on the wall.")]
+    private float climbMoveCostPerSecond = 6f;
+    [SerializeField, Tooltip("How far up and forward you pull yourself at the top of a wall.")]
+    private float mantleUp = 1.3f;
+    [SerializeField] private float mantleForward = 0.8f;
+
+    [Header("Wetness")]
+    [SerializeField, Tooltip("Wetness gained per second while wading (0-1 scale). Swimming soaks you instantly.")]
+    private float wetPerSecond = 0.5f;
+    [SerializeField, Tooltip("Wetness lost per second out in the rain.")]
+    private float dryOutsidePerSecond = 0.01f;
+    [SerializeField, Tooltip("Wetness lost per second under a roof (indoors).")]
+    private float dryIndoorsPerSecond = 0.08f;
+    [SerializeField, Range(0f, 0.5f), Tooltip("Speed lost when fully soaked (0.15 = 15% slower).")]
+    private float soakedSlowdown = 0.15f;
+
     private CharacterController controller;
     private PlayerInputReader input;
     private PlayerStamina stamina;
@@ -69,6 +92,10 @@ public class PlayerController : MonoBehaviour
     private bool isSwimming;
     private float waterDepth;
     private Vector3 externalVelocity; // shoves from monsters etc., fades out
+    private bool isClimbing;
+    private Vector3 climbNormal;
+    private float wetness;
+    private MovingPlatform platform; // what we are standing on, if it moves
     private readonly Collider[] standUpHits = new Collider[8];
 
     public bool IsCrouching => isCrouching;
@@ -78,6 +105,18 @@ public class PlayerController : MonoBehaviour
     public bool IsGrounded => controller.isGrounded;
     public float CurrentSpeed => horizontalVelocity.magnitude;
     public float Pitch => lookPitch;
+    public bool IsClimbing => isClimbing;
+    public bool IsOnRaft => platform != null && platform.isRaft;
+    // 0 = dry, 1 = soaked. Wet players are slower and louder (PlayerNoise reads this).
+    public float Wetness => wetness;
+
+    // Input, but nothing while a menu is open.
+    private Vector2 MoveInput => UIState.MenuOpen ? Vector2.zero : input.Move;
+    private Vector2 LookInput => UIState.MenuOpen ? Vector2.zero : input.Look;
+    private bool JumpPressed => !UIState.MenuOpen && input.JumpPressedThisFrame;
+    private bool JumpHeld => !UIState.MenuOpen && input.JumpHeld;
+    private bool CrouchHeld => !UIState.MenuOpen && input.CrouchHeld;
+    private bool SprintHeld => !UIState.MenuOpen && input.SprintHeld;
 
     private void Awake()
     {
@@ -106,6 +145,15 @@ public class PlayerController : MonoBehaviour
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         externalVelocity = Vector3.zero;
+        isClimbing = false;
+    }
+
+    // A teammate grabbed our hand while we were climbing: end up next to them (section 4.1).
+    public void PullUpTo(Vector3 helperFeet, Vector3 awayFromEdge)
+    {
+        Vector3 target = helperFeet + awayFromEdge.normalized * 0.7f + Vector3.up * 0.05f;
+        Teleport(target, transform.eulerAngles.y);
+        stamina.Restore(15f); // a little breather
     }
 
     // Gives the player a push (e.g. a monster dragging them down). Fades out quickly.
@@ -121,15 +169,22 @@ public class PlayerController : MonoBehaviour
 
         if (health != null && health.IsDead)
         {
+            isClimbing = false;
             return; // no moving while dead
         }
 
         UpdateWaterState();
+        UpdateWetness();
+        RideMovingPlatform();
         HandleLook();
         HandleCrouch();
 
         bool spentStamina;
-        if (isSwimming)
+        if (isClimbing)
+        {
+            spentStamina = HandleClimbing();
+        }
+        else if (isSwimming)
         {
             spentStamina = HandleSwimMovement();
         }
@@ -144,6 +199,13 @@ public class PlayerController : MonoBehaviour
     // Esc frees the mouse (for the editor), clicking locks it again.
     private void HandleCursorToggle()
     {
+        if (UIState.MenuOpen)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            return;
+        }
+
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             Cursor.lockState = CursorLockMode.None;
@@ -178,7 +240,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleLook()
     {
-        Vector2 look = input.Look * lookSensitivity;
+        Vector2 look = LookInput * lookSensitivity;
 
         transform.Rotate(Vector3.up * look.x);
 
@@ -191,7 +253,7 @@ public class PlayerController : MonoBehaviour
 
     private void HandleCrouch()
     {
-        bool wantsCrouch = input.CrouchHeld && !isSwimming;
+        bool wantsCrouch = CrouchHeld && !isSwimming && !isClimbing;
 
         if (wantsCrouch)
         {
@@ -239,11 +301,18 @@ public class PlayerController : MonoBehaviour
     private bool HandleGroundMovement()
     {
         bool spentStamina = false;
-        Vector2 moveInput = input.Move;
+        Vector2 moveInput = MoveInput;
         bool isMoving = moveInput.sqrMagnitude > 0.01f;
 
+        // Space in front of a climbable surface grabs on instead of jumping.
+        if (JumpPressed && TryFindClimbable(out RaycastHit climbHit))
+        {
+            StartClimbing(climbHit);
+            return true;
+        }
+
         // Sprint needs stamina, forward-ish movement, and not being exhausted.
-        isSprinting = input.SprintHeld && isMoving && !isCrouching
+        isSprinting = SprintHeld && isMoving && !isCrouching
                       && !stamina.IsExhausted && waterDepth < wadeDepth;
 
         float targetSpeed = walkSpeed;
@@ -264,6 +333,7 @@ public class PlayerController : MonoBehaviour
         {
             targetSpeed *= grabber.SpeedMultiplier;
         }
+        targetSpeed *= 1f - soakedSlowdown * wetness;
 
         if (isSprinting)
         {
@@ -281,7 +351,7 @@ public class PlayerController : MonoBehaviour
             verticalVelocity = -2f; // small push keeps the controller stuck to the ground
         }
 
-        if (controller.isGrounded && input.JumpPressedThisFrame && !isCrouching && stamina.TrySpend(jumpCost))
+        if (controller.isGrounded && JumpPressed && !isCrouching && stamina.TrySpend(jumpCost))
         {
             verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
             spentStamina = true;
@@ -302,7 +372,7 @@ public class PlayerController : MonoBehaviour
         isSprinting = false;
         verticalVelocity = 0f;
 
-        Vector2 moveInput = input.Move;
+        Vector2 moveInput = MoveInput;
         // Swim in the direction you are looking, so looking up swims up.
         Vector3 wishDirection = cameraTransform.right * moveInput.x + cameraTransform.forward * moveInput.y;
         wishDirection = Vector3.ClampMagnitude(wishDirection, 1f);
@@ -321,17 +391,17 @@ public class PlayerController : MonoBehaviour
         Vector3 targetVelocity = wishDirection * speed;
 
         // Jump swims up, crouch dives down.
-        if (input.JumpHeld)
+        if (JumpHeld)
         {
             targetVelocity.y += swimVerticalSpeed;
         }
-        if (input.CrouchHeld)
+        if (CrouchHeld)
         {
             targetVelocity.y -= swimVerticalSpeed;
         }
 
         // Without input the player slowly floats back toward the surface.
-        bool hasInput = wishDirection.sqrMagnitude > 0.01f || input.JumpHeld || input.CrouchHeld;
+        bool hasInput = wishDirection.sqrMagnitude > 0.01f || JumpHeld || CrouchHeld;
         if (!hasInput)
         {
             targetVelocity.y = 0.5f;
@@ -367,6 +437,139 @@ public class PlayerController : MonoBehaviour
             controller.enabled = false;
             transform.position = position;
             controller.enabled = true;
+        }
+    }
+
+    // ---------- Climbing (section 4.1) ----------
+
+    private bool TryFindClimbable(out RaycastHit hit)
+    {
+        Vector3 chest = transform.position + Vector3.up * (controller.height * 0.6f);
+        if (Physics.Raycast(chest, transform.forward, out hit, climbReach + controller.radius, ~0, QueryTriggerInteraction.Ignore))
+        {
+            return hit.collider.GetComponentInParent<Climbable>() != null;
+        }
+        return false;
+    }
+
+    private void StartClimbing(RaycastHit hit)
+    {
+        isClimbing = true;
+        isSprinting = false;
+        climbNormal = Flatten(hit.normal, -transform.forward);
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+    }
+
+    // Returns true if stamina was spent this frame.
+    private bool HandleClimbing()
+    {
+        // Out of stamina, or Ctrl: let go and fall.
+        if (stamina.IsExhausted || CrouchHeld)
+        {
+            isClimbing = false;
+            return false;
+        }
+
+        // Space: push off the wall.
+        if (JumpPressed)
+        {
+            isClimbing = false;
+            horizontalVelocity = climbNormal * 3f;
+            verticalVelocity = 3f;
+            return true;
+        }
+
+        Vector2 move = MoveInput;
+
+        // Is the surface still in front of our chest?
+        Vector3 chest = transform.position + Vector3.up * (controller.height * 0.6f);
+        bool stillOnWall = Physics.Raycast(chest, -climbNormal, out RaycastHit wallHit,
+                               climbReach + controller.radius + 0.2f, ~0, QueryTriggerInteraction.Ignore)
+                           && wallHit.collider.GetComponentInParent<Climbable>() != null;
+
+        if (!stillOnWall)
+        {
+            if (move.y > 0.1f)
+            {
+                Mantle(); // climbed past the top: pull up onto the ledge
+            }
+            isClimbing = false;
+            return true;
+        }
+
+        climbNormal = Flatten(wallHit.normal, climbNormal);
+        Vector3 right = Vector3.Cross(Vector3.up, -climbNormal);
+        Vector3 velocity = (Vector3.up * move.y + right * move.x) * climbSpeed - climbNormal * 0.5f;
+        controller.Move(velocity * Time.deltaTime);
+
+        // Climbing down onto the floor ends the climb.
+        if (controller.isGrounded && move.y < -0.1f)
+        {
+            isClimbing = false;
+        }
+
+        float cost = climbHoldCostPerSecond;
+        if (move.sqrMagnitude > 0.01f)
+        {
+            cost += climbMoveCostPerSecond;
+        }
+        stamina.Spend(cost * Time.deltaTime);
+        return true;
+    }
+
+    private void Mantle()
+    {
+        controller.Move(Vector3.up * mantleUp);
+        controller.Move(-climbNormal * mantleForward);
+        verticalVelocity = 0f;
+    }
+
+    private static Vector3 Flatten(Vector3 direction, Vector3 fallback)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            direction = fallback;
+            direction.y = 0f;
+        }
+        return direction.normalized;
+    }
+
+    // ---------- Wetness (section 4.1) ----------
+
+    private void UpdateWetness()
+    {
+        if (isSwimming)
+        {
+            wetness = 1f;
+        }
+        else if (waterDepth >= wadeDepth)
+        {
+            wetness = Mathf.Min(1f, wetness + wetPerSecond * Time.deltaTime);
+        }
+        else
+        {
+            bool indoors = Physics.Raycast(transform.position + Vector3.up * 2f, Vector3.up, 15f, ~0, QueryTriggerInteraction.Ignore);
+            float dryRate = indoors ? dryIndoorsPerSecond : dryOutsidePerSecond;
+            wetness = Mathf.Max(0f, wetness - dryRate * Time.deltaTime);
+        }
+    }
+
+    // ---------- Moving platforms (rafts) ----------
+
+    private void RideMovingPlatform()
+    {
+        platform = null;
+        Vector3 origin = transform.position + Vector3.up * 0.3f;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 0.6f, ~0, QueryTriggerInteraction.Ignore))
+        {
+            platform = hit.collider.GetComponentInParent<MovingPlatform>();
+        }
+
+        if (platform != null && platform.FrameDelta.sqrMagnitude > 0f)
+        {
+            controller.Move(platform.FrameDelta);
         }
     }
 }

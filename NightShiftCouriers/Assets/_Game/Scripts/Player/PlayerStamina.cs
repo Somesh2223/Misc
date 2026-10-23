@@ -44,6 +44,16 @@ public class PlayerStamina : MonoBehaviour
         }
     }
 
+    // Give stamina back (e.g. a teammate pulled you up).
+    public void Restore(float amount)
+    {
+        current = Mathf.Min(maxStamina, current + amount);
+        if (exhausted && current >= exhaustedRecoverAmount)
+        {
+            exhausted = false;
+        }
+    }
+
     // Spend a lump sum (e.g. a jump). Returns false if there is not enough.
     public bool TrySpend(float amount)
     {

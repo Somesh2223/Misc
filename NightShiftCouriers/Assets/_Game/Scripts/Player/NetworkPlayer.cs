@@ -9,11 +9,13 @@ using UnityEngine;
 // - Everyone else sees a smoothed copy.
 // - The SERVER checks the owner is not moving impossibly fast and snaps them back if they are.
 // - Monsters and other server code read player state from here, never from the owner's controller.
-public class NetworkPlayer : NetworkBehaviour
+public class NetworkPlayer : NetworkBehaviour, IServerInteractable
 {
     private const byte FlagSwimming = 1;
     private const byte FlagCrouching = 2;
     private const byte FlagSprinting = 4;
+    private const byte FlagClimbing = 8;
+    private const byte FlagOnRaft = 16;
 
     private static readonly List<NetworkPlayer> allPlayers = new List<NetworkPlayer>();
     private static string serverVoiceChannel; // one voice channel per hosted session (server only)
@@ -41,6 +43,8 @@ public class NetworkPlayer : NetworkBehaviour
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<float> netYaw = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<float> netPitch = new NetworkVariable<float>(
+        0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<float> netWaterDepth = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<byte> netFlags = new NetworkVariable<byte>(
@@ -55,6 +59,7 @@ public class NetworkPlayer : NetworkBehaviour
 
     private PlayerController controller;
     private PlayerHealth health;
+    private PlayerInventory inventory;
     private CharacterController characterController;
 
     // Server-side speed check
@@ -63,6 +68,13 @@ public class NetworkPlayer : NetworkBehaviour
     private bool checkStarted;
 
     public PlayerHealth Health => health;
+    public PlayerInventory Inventory => inventory;
+    public float Yaw => netYaw.Value;
+    public float Pitch => netPitch.Value;
+    // Where the player is looking (from the synced yaw and pitch).
+    public Vector3 Forward => Quaternion.Euler(netPitch.Value, netYaw.Value, 0f) * Vector3.forward;
+    public bool IsClimbing => (netFlags.Value & FlagClimbing) != 0;
+    public bool IsOnRaft => (netFlags.Value & FlagOnRaft) != 0;
     public Vector3 Position => IsOwner ? transform.position : netPosition.Value;
     public float WaterDepth => netWaterDepth.Value;
     public bool IsSwimming => (netFlags.Value & FlagSwimming) != 0;
@@ -77,6 +89,7 @@ public class NetworkPlayer : NetworkBehaviour
     {
         controller = GetComponent<PlayerController>();
         health = GetComponent<PlayerHealth>();
+        inventory = GetComponent<PlayerInventory>();
         characterController = GetComponent<CharacterController>();
     }
 
@@ -128,7 +141,8 @@ public class NetworkPlayer : NetworkBehaviour
         controller.enabled = true;
         foreach (Behaviour behaviour in GetComponents<Behaviour>())
         {
-            if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter || behaviour is PlayerVoice)
+            if (behaviour is PlayerStamina || behaviour is PlayerNoise || behaviour is MicNoiseReporter || behaviour is PlayerVoice
+                || behaviour is LocalMicrophone || behaviour is VoiceClipRecorder)
             {
                 behaviour.enabled = true;
             }
@@ -208,12 +222,15 @@ public class NetworkPlayer : NetworkBehaviour
     {
         netPosition.Value = transform.position;
         netYaw.Value = transform.eulerAngles.y;
+        netPitch.Value = controller.Pitch;
         netWaterDepth.Value = controller.WaterDepth;
 
         byte flags = 0;
         if (controller.IsSwimming) flags |= FlagSwimming;
         if (controller.IsCrouching) flags |= FlagCrouching;
         if (controller.IsSprinting) flags |= FlagSprinting;
+        if (controller.IsClimbing) flags |= FlagClimbing;
+        if (controller.IsOnRaft) flags |= FlagOnRaft;
         netFlags.Value = flags;
 
         netAimOrigin.Value = cameraTransform.position;
@@ -300,6 +317,36 @@ public class NetworkPlayer : NetworkBehaviour
         ClientRpcParams rpcParams = default;
         rpcParams.Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { OwnerClientId } };
         return rpcParams;
+    }
+
+    // ---------- Pull-up assist (section 4.1) ----------
+
+    // A teammate pressed E while looking at this player (server).
+    public void ServerInteract(NetworkPlayer helper)
+    {
+        if (helper == this || !IsClimbing || helper.IsDead || IsDead)
+        {
+            return;
+        }
+
+        // The helper must be above us (standing at the top) and close by.
+        bool helperAbove = helper.Position.y > Position.y + 0.3f;
+        bool close = Vector3.Distance(helper.Position, Position) < 3.5f;
+        if (!helperAbove || !close)
+        {
+            return;
+        }
+
+        Vector3 awayFromEdge = helper.Position - Position;
+        awayFromEdge.y = 0f;
+        PullUpClientRpc(helper.Position, awayFromEdge, OwnerOnly());
+    }
+
+    [ClientRpc]
+    private void PullUpClientRpc(Vector3 helperFeet, Vector3 awayFromEdge, ClientRpcParams rpcParams = default)
+    {
+        controller.PullUpTo(helperFeet, awayFromEdge);
+        netPosition.Value = transform.position;
     }
 
     // ---------- Owner -> server reports ----------

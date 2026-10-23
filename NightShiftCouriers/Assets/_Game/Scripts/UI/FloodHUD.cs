@@ -55,7 +55,15 @@ public class FloodHUD : MonoBehaviour
         {
             string text = "Flood stage " + (flood.StageIndex + 1) + "/" + flood.StageCount + ": " + flood.StageName
                           + "\nWater height: " + flood.CurrentWaterHeight.ToString("0.00") + " m";
-            if (!flood.IsLastStage)
+            if (flood.IsDawn)
+            {
+                text += "\nDAWN";
+            }
+            else if (flood.IsLastStage)
+            {
+                text += "\nDawn in: " + Mathf.CeilToInt(flood.SecondsUntilNextRise) + " s";
+            }
+            else
             {
                 text += "\nNext rise in: " + Mathf.CeilToInt(flood.SecondsUntilNextRise) + " s   (host: N = skip)";
             }
