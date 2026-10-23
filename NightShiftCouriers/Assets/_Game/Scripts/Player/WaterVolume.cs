@@ -13,6 +13,19 @@ public class WaterVolume : MonoBehaviour
 
     public float SurfaceHeight => transform.position.y;
 
+    // Horizontal extent of the water (world space).
+    public Bounds Area
+    {
+        get
+        {
+            if (area == null)
+            {
+                area = GetComponent<Collider>();
+            }
+            return area.bounds;
+        }
+    }
+
     private void Awake()
     {
         area = GetComponent<Collider>();

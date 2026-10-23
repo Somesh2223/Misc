@@ -238,4 +238,40 @@ public static class SceneBuildHelpers
             ColorObject(step, new Color(0.6f, 0.6f, 0.6f));
         }
     }
+
+    public static MonsterData GetJalPishachData()
+    {
+        string path = MonsterDataFolder + "/Monster_JalPishach.asset";
+        MonsterData data = AssetDatabase.LoadAssetAtPath<MonsterData>(path);
+        if (data != null)
+        {
+            return data;
+        }
+
+        EnsureFolder(MonsterDataFolder);
+        data = ScriptableObject.CreateInstance<MonsterData>();
+        data.displayName = "Jal-Pishach";
+        AssetDatabase.CreateAsset(data, path);
+        AssetDatabase.SaveAssets();
+        return data;
+    }
+
+    // Creates a Jal-Pishach that lives in the given water.
+    public static JalPishach MakeJalPishach(WaterVolume home, Vector3 startPosition)
+    {
+        GameObject monsterObject = new GameObject("Jal-Pishach");
+        monsterObject.transform.position = startPosition;
+        JalPishach monster = monsterObject.AddComponent<JalPishach>();
+
+        SerializedObject so = new SerializedObject(monster);
+        so.FindProperty("data").objectReferenceValue = GetJalPishachData();
+        so.FindProperty("homeWater").objectReferenceValue = home;
+        so.ApplyModifiedPropertiesWithoutUndo();
+
+        if (Object.FindFirstObjectByType<MonsterDebugHUD>() == null)
+        {
+            new GameObject("MonsterDebugHUD").AddComponent<MonsterDebugHUD>();
+        }
+        return monster;
+    }
 }
