@@ -10,6 +10,8 @@ public class PlayerInputReader : MonoBehaviour
     private InputAction sprintAction;
     private InputAction crouchAction;
     private InputAction jumpAction;
+    private InputAction interactAction;
+    private InputAction throwAction;
 
     public Vector2 Move => moveAction.ReadValue<Vector2>();
     public Vector2 Look => lookAction.ReadValue<Vector2>();
@@ -17,6 +19,8 @@ public class PlayerInputReader : MonoBehaviour
     public bool CrouchHeld => crouchAction.IsPressed();
     public bool JumpHeld => jumpAction.IsPressed();
     public bool JumpPressedThisFrame => jumpAction.WasPressedThisFrame();
+    public bool InteractPressedThisFrame => interactAction.WasPressedThisFrame();
+    public bool ThrowPressedThisFrame => throwAction.WasPressedThisFrame();
 
     private void Awake()
     {
@@ -41,6 +45,12 @@ public class PlayerInputReader : MonoBehaviour
 
         jumpAction = new InputAction("Jump", InputActionType.Button, "<Keyboard>/space");
         jumpAction.AddBinding("<Gamepad>/buttonSouth");
+
+        interactAction = new InputAction("Interact", InputActionType.Button, "<Keyboard>/e");
+        interactAction.AddBinding("<Gamepad>/buttonWest");
+
+        throwAction = new InputAction("Throw", InputActionType.Button, "<Mouse>/leftButton");
+        throwAction.AddBinding("<Gamepad>/rightTrigger");
     }
 
     private void OnEnable()
@@ -50,6 +60,8 @@ public class PlayerInputReader : MonoBehaviour
         sprintAction.Enable();
         crouchAction.Enable();
         jumpAction.Enable();
+        interactAction.Enable();
+        throwAction.Enable();
     }
 
     private void OnDisable()
@@ -59,5 +71,7 @@ public class PlayerInputReader : MonoBehaviour
         sprintAction.Disable();
         crouchAction.Disable();
         jumpAction.Disable();
+        interactAction.Disable();
+        throwAction.Disable();
     }
 }

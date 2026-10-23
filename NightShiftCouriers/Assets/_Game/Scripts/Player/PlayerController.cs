@@ -58,6 +58,7 @@ public class PlayerController : MonoBehaviour
     private CharacterController controller;
     private PlayerInputReader input;
     private PlayerStamina stamina;
+    private PlayerGrabber grabber; // optional
 
     private Vector3 horizontalVelocity;
     private float verticalVelocity;
@@ -79,6 +80,7 @@ public class PlayerController : MonoBehaviour
         controller = GetComponent<CharacterController>();
         input = GetComponent<PlayerInputReader>();
         stamina = GetComponent<PlayerStamina>();
+        grabber = GetComponent<PlayerGrabber>();
     }
 
     private void Start()
@@ -216,6 +218,11 @@ public class PlayerController : MonoBehaviour
             targetSpeed = sprintSpeed;
         }
 
+        if (grabber != null)
+        {
+            targetSpeed *= grabber.SpeedMultiplier;
+        }
+
         if (isSprinting)
         {
             stamina.Spend(sprintCostPerSecond * Time.deltaTime);
@@ -259,6 +266,10 @@ public class PlayerController : MonoBehaviour
         wishDirection = Vector3.ClampMagnitude(wishDirection, 1f);
 
         float speed = swimSpeed;
+        if (grabber != null)
+        {
+            speed *= grabber.SpeedMultiplier;
+        }
         bool exhausted = stamina.IsExhausted;
         if (exhausted)
         {
