@@ -69,6 +69,7 @@ public class PlayerController : MonoBehaviour
     private bool isSwimming;
     private float waterDepth;
     private Vector3 externalVelocity; // shoves from monsters etc., fades out
+    private readonly Collider[] standUpHits = new Collider[8];
 
     public bool IsCrouching => isCrouching;
     public bool IsSprinting => isSprinting;
@@ -214,10 +215,22 @@ public class PlayerController : MonoBehaviour
     // Stops you standing up inside a low ceiling.
     private bool CanStandUp()
     {
+        // Check the space a standing body would fill, starting a little above the floor
+        // so standing on the ground does not count as "blocked".
         float radius = controller.radius * 0.9f;
-        Vector3 bottom = transform.position + Vector3.up * radius;
+        Vector3 bottom = transform.position + Vector3.up * (radius + 0.1f);
         Vector3 top = transform.position + Vector3.up * (standingHeight - radius);
-        return !Physics.CheckCapsule(bottom, top, radius, ~0, QueryTriggerInteraction.Ignore);
+
+        int hitCount = Physics.OverlapCapsuleNonAlloc(bottom, top, radius, standUpHits, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < hitCount; i++)
+        {
+            // Our own CharacterController (and anything parented to us) is not a ceiling.
+            if (!standUpHits[i].transform.IsChildOf(transform))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     // ---------- Ground movement (walk, sprint, crouch, wade, jump) ----------
