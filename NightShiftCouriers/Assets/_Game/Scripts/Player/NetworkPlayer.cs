@@ -146,6 +146,8 @@ public class NetworkPlayer : NetworkBehaviour
     {
         // Remote players are just a smoothed copy. No input, no camera, no collider of their own.
         characterController.enabled = false;
+        transform.position = netPosition.Value; // appear where the player is, not at the origin
+        transform.rotation = Quaternion.Euler(0f, netYaw.Value, 0f);
         if (cameraTransform != null)
         {
             cameraTransform.gameObject.SetActive(false);
@@ -166,6 +168,11 @@ public class NetworkPlayer : NetworkBehaviour
 
     private void Update()
     {
+        if (!IsSpawned)
+        {
+            return;
+        }
+
         if (IsOwner)
         {
             PublishLocalState();
