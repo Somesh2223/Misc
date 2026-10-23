@@ -30,8 +30,6 @@ public class GameNetworkConfig : MonoBehaviour
         Application.runInBackground = true; // so a second test window keeps running when unfocused
 
         NetworkManager manager = GetComponent<NetworkManager>();
-        manager.DontDestroy = false;
-
         if (manager.NetworkConfig == null)
         {
             manager.NetworkConfig = new NetworkConfig();
