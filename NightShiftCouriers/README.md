@@ -23,6 +23,15 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - [x] Proximity voice chat with Vivox (needs the one-time setup in "Voice chat" below)
 - [ ] Playtest with 2-4 real players (the M2 test: "can a crew finish a shift without desyncs?")
 
+## Milestone 3 progress (content & variety)
+- [x] Climbing (green surfaces, drainpipes, ropes) with stamina drain, mantling, and teammate pull-up
+- [x] Wetness: wading/swimming soaks you; soaked = slower and louder; dries faster indoors
+- [x] Items: flashlight, rope, plank, radio, decoy, salt pouch, lemon-chilli charm, repair kit, glow sticks (4 inventory slots)
+- [x] Depot shop and quota: bank, quota every 3 nights, depot -> shift -> results loop, dawn extraction
+- [x] Rafts: three parts, two-person build at a workbench, paddling, 2-rider limit, damage, breaking into parts
+- [x] Chudail (voice mimic, backwards footprints, anklet bells; blocked by salt) and Vetala (drops on lit players, possesses packages)
+- [ ] Playtest: "Do players use tells and counters, or just run?"
+
 ## How multiplayer works (read this first)
 - Every scene has a **NetworkManager** object. The single-player test scenes start hosting automatically, so you
   play alone as the host. `City_Greybox` shows a menu instead.
@@ -60,6 +69,12 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 | Skip to next flood stage (debug, host only) | N |
 | Restart the shift after it ends (host only) | R |
 | Free the mouse | Esc (click to re-lock) |
+| Grab a wall / rope (climb) | Space while facing a green climbable surface; W/S/A/D to move; Space jumps off; Ctrl lets go |
+| Pull up a climbing teammate | Stand above them and press E while looking at them |
+| Select item slot | 1 - 4 |
+| Use selected item | Right mouse (on a raft: paddle; best with a plank) |
+| Pick up item / use shop / raft workbench | E |
+| Push-to-talk (if chosen in the side panel) | Hold V |
 
 ## Test checklists
 
@@ -89,6 +104,16 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - Cross the canal (z 0..10) by the bridge at x=-4 (safe) or by wading/swimming (fast and dangerous once the water is up).
 - Drop a package inside a green zone to deliver it. Payout = base value x condition x speed bonus.
 - Quota is 400. When all three are delivered or lost, the result shows; R restarts.
+
+## Testing Milestone 3 (one menu item per system, then Play)
+| Menu item | What to check |
+|---|---|
+| Create Test_Climbing Scene | Climb the green building and drainpipe; stamina drains while holding; you pull up onto the roof at the top. Pick up a rope (E), aim at the top edge of the grey ledge and right-click: climb the rope. Pick up a plank, stand at a rooftop edge and right-click to bridge the gap. With 2 players: one climbs, the other stands on top and presses E on them. |
+| Create Test_Items Scene | Press E at the yellow shop terminal; you have 2000 to spend. Try every item: flashlight on/off and battery, decoy bangs, salt ring, charm message, repair kit on the fragile parcel after dropping it, glow sticks. |
+| Create Test_Raft Scene | Carry the floaters (blue) and lashing rope into the zone in front of the workbench (the platform is already there). Press E at the bench: it builds in ~6 s (alone counts as enough builders). Stand on the raft, select a plank and right-click to paddle. Ram a post fast to damage it; repair it with the repair kit. A third person on it tips it over. The Jal-Pishach at the far end rams rafts. |
+| Create Test_Monster_Chudail Scene | She wanders the streets (bells while moving, footprints pointing backwards). Alone, she attacks. Pour salt (right mouse) and stand in the ring: she cannot reach you. Throw a decoy to pull her away. With 2+ players: stay together and she waits at a distance and copies a teammate's voice (with an echo). |
+| Create Test_Monster_Vetala Scene | Walk under the wire with the flashlight ON: it drops on you. Lights off: it ignores you. Carry a package near it: it may possess it (heavier, screams, loses value) - hand it to a teammate to break the spell. The charm hides you from it. |
+| Create City_Greybox Scene | The full loop: Host, buy items in the depot, START SHIFT, deliver, build a raft, get back to the depot extraction before dawn, see the results, RETURN TO DEPOT, repeat for three nights to hit the quota. |
 
 ## Testing multiplayer
 
@@ -139,12 +164,19 @@ To switch to URP later (plan section 2): **Create > Rendering > URP Asset (with 
 **Project Settings > Graphics** and **Project Settings > Quality**, delete `Assets/_Game/Prefabs/Materials`, then re-run the
 **Night Shift > Create ... Scene** menu items. The builders pick the URP shader automatically once URP is active.
 
+## Privacy note: the Chudail's voice mimic
+When "Chudail voice mimic" is ON (side panel), short clips (1.5 s) of your voice are sent to the host while you talk, kept in
+memory for that session only, and played back by the Chudail to your teammates. Nothing is saved to disk or sent anywhere else.
+Turn it OFF in the side panel at any time.
+
 ## Known issues
 - All code was written without a Unity editor available, so it has never been compiled or run. Expect to fix small compile or API errors on first open.
 - **Package versions are unverified**: the registry was not reachable while writing this. Vivox is pinned to 16.7.0 and Authentication to 3.4.0 (the Vivox calls were written from its documented API without being able to read the docs page; the `Channel3DProperties` constructor argument order is the likeliest thing to need a fix). `com.unity.netcode.gameobjects` is pinned to 2.1.1; if Unity says that version does not exist, pick the newest 2.x in Package Manager. The Facepunch transport is pinned to a git commit and was written for NGO 1.x; if it does not compile against NGO 2.x, update it or tell me the errors.
 - If the console shows duplicate network prefab warnings, delete the auto-generated `DefaultNetworkPrefabs` list (the game registers its prefabs in `GameNetworkConfig`).
 - Network RPCs use the classic `[ServerRpc]` / `[ClientRpc]` attributes; NGO 2.x may show deprecation warnings for them (harmless).
-- Remote players have no collider, so packages and monsters pass through other players for now.
+- Sounds are generated in code (bells, laughter, screams, bangs) as placeholders until the audio pass (M5).
+- The radio uses Vivox's "transmit to all channels" mode; it has no static effect yet, and dead players cannot hijack it yet (M4).
+- The Chudail walks the navigation map built at shift start; it does not swim, so deep water does not stop it (streets just flood around her).
 - One test machine means no real latency: expect to tune the smoothing and the speed check once you play over the internet.
 - Climbing and wetness (plan 4.1) are not built yet (M3 / later).
 - Water is a flat trigger box; there is no water shader or underwater effect yet.
