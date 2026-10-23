@@ -31,9 +31,12 @@ public static class SceneBuildHelpers
         return block;
     }
 
+    // Uses the URP shader only when a URP pipeline asset is active; otherwise URP shaders render pink,
+    // so fall back to the built-in Standard shader.
     public static Material MakeMaterial(Color color)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        bool usingUrp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
+        Shader shader = usingUrp ? Shader.Find("Universal Render Pipeline/Lit") : null;
         if (shader == null)
         {
             shader = Shader.Find("Standard");

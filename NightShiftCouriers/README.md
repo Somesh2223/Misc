@@ -35,7 +35,7 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - Late join only before the shift starts: the host presses **START SHIFT** once the crew is in.
 
 ## How to open it
-1. Open the `NightShiftCouriers` folder in Unity Hub with Unity 6 (URP). If you start from a blank URP template instead, copy `Assets/_Game` into it and install the Input System package.
+1. Open the `NightShiftCouriers` folder in Unity Hub with Unity 6.3 LTS (6000.3.27f1). If you start from a blank URP template instead, copy `Assets/_Game` into it and install the Input System package.
 2. Every system has a menu item under **Night Shift** that builds its test scene. Run the one you want, then press Play.
 3. If Unity asks to restart for the Input System switch, accept.
 
@@ -132,6 +132,12 @@ as noise that monsters can hear. Tune `Vivox Level Scale` on `MicNoiseReporter` 
 for the monster. If Vivox is not set up, the old "Mic noise only" button still measures the raw microphone instead.
 
 **Not done:** voices are not muffled underwater or through walls yet (plan 4.12), and the radio item (long range channel) is Milestone 3.
+
+## Graphics: built-in vs URP
+The project opens with Unity's built-in renderer, and the scene builders use the built-in *Standard* shader so nothing shows up pink.
+To switch to URP later (plan section 2): **Create > Rendering > URP Asset (with Universal Renderer)**, assign it in
+**Project Settings > Graphics** and **Project Settings > Quality**, delete `Assets/_Game/Prefabs/Materials`, then re-run the
+**Night Shift > Create ... Scene** menu items. The builders pick the URP shader automatically once URP is active.
 
 ## Known issues
 - All code was written without a Unity editor available, so it has never been compiled or run. Expect to fix small compile or API errors on first open.

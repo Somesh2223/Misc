@@ -20,7 +20,7 @@ public class JalPishach : MonsterBase
     private float dragDownSpeed = 5f;
 
     [Header("Look")]
-    [SerializeField, Tooltip("Material used for the body and ripples (a URP Lit material).")]
+    [SerializeField, Tooltip("Material used for the body and ripples (matches the project's render pipeline).")]
     private Material visualMaterial;
 
     [Header("Tell: ripples")]
@@ -93,7 +93,8 @@ public class JalPishach : MonsterBase
         }
         else
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            bool usingUrp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
+            Shader shader = usingUrp ? Shader.Find("Universal Render Pipeline/Lit") : null;
             material = new Material(shader != null ? shader : Shader.Find("Standard"));
         }
         material.color = color;
