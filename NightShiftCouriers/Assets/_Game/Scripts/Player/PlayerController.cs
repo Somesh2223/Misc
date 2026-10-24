@@ -87,6 +87,9 @@ public class PlayerController : MonoBehaviour
     private PlayerStamina stamina;
     private PlayerGrabber grabber; // optional
     private PlayerHealth health;   // optional
+    private NetworkPlayer networkPlayer; // optional (test rigs without networking)
+    private Camera playerCamera;
+    private bool menuWasOpen;
 
     private Vector3 horizontalVelocity;
     private float verticalVelocity;
@@ -116,13 +119,13 @@ public class PlayerController : MonoBehaviour
     // 0 = dry, 1 = soaked. Wet players are slower and louder (PlayerNoise reads this).
     public float Wetness => wetness;
 
-    // Input, but nothing while a menu is open.
-    private Vector2 MoveInput => UIState.MenuOpen ? Vector2.zero : input.Move;
-    private Vector2 LookInput => UIState.MenuOpen ? Vector2.zero : input.Look;
-    private bool JumpPressed => !UIState.MenuOpen && input.JumpPressedThisFrame;
-    private bool JumpHeld => !UIState.MenuOpen && input.JumpHeld;
-    private bool CrouchHeld => !UIState.MenuOpen && input.CrouchHeld;
-    private bool SprintHeld => !UIState.MenuOpen && input.SprintHeld;
+    // Input, but nothing while a menu is open (or the trailer camera is flying).
+    private Vector2 MoveInput => UIState.InputBlocked ? Vector2.zero : input.Move;
+    private Vector2 LookInput => UIState.InputBlocked ? Vector2.zero : input.Look;
+    private bool JumpPressed => !UIState.InputBlocked && input.JumpPressedThisFrame;
+    private bool JumpHeld => !UIState.InputBlocked && input.JumpHeld;
+    private bool CrouchHeld => !UIState.InputBlocked && input.CrouchHeld;
+    private bool SprintHeld => !UIState.InputBlocked && input.SprintHeld;
 
     private void Awake()
     {
@@ -131,6 +134,8 @@ public class PlayerController : MonoBehaviour
         stamina = GetComponent<PlayerStamina>();
         grabber = GetComponent<PlayerGrabber>();
         health = GetComponent<PlayerHealth>();
+        networkPlayer = GetComponent<NetworkPlayer>();
+        playerCamera = cameraTransform != null ? cameraTransform.GetComponent<Camera>() : null;
     }
 
     private void Start()
@@ -139,6 +144,25 @@ public class PlayerController : MonoBehaviour
         controller.center = new Vector3(0f, standingHeight / 2f, 0f);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+        ApplySettings();
+    }
+
+    private void OnEnable()
+    {
+        GameSettings.Changed += ApplySettings;
+    }
+
+    private void OnDisable()
+    {
+        GameSettings.Changed -= ApplySettings;
+    }
+
+    private void ApplySettings()
+    {
+        if (playerCamera != null)
+        {
+            playerCamera.fieldOfView = GameSettings.FieldOfView;
+        }
     }
 
     // Moves the player instantly (spawning, respawning, server snap-back).
@@ -184,6 +208,17 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
+        if (networkPlayer != null && networkPlayer.IsHeldDown)
+        {
+            // A Mud Crawler has us: we can look around and shout, but not walk away.
+            isClimbing = false;
+            isSprinting = false;
+            HandleLook();
+            HandleHeld();
+            stamina.Tick(false);
+            return;
+        }
+
         UpdateWaterState();
         UpdateWetness();
         RideMovingPlatform();
@@ -207,26 +242,37 @@ public class PlayerController : MonoBehaviour
         stamina.Tick(spentStamina);
     }
 
-    // Esc frees the mouse (for the editor), clicking locks it again.
+    // The mouse is free while a menu is open (Esc opens the pause menu) and locked again when it closes.
+    // Clicking also locks it, in case the window lost focus.
     private void HandleCursorToggle()
     {
         if (UIState.MenuOpen)
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+            menuWasOpen = true;
             return;
         }
 
-        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        bool clicked = Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+        if (menuWasOpen || clicked)
         {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-        {
+            menuWasOpen = false;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+    }
+
+    // Dragged toward the drain grate and held there until a teammate pulls us free.
+    private void HandleHeld()
+    {
+        Vector3 toAnchor = networkPlayer.HeldAnchor - transform.position;
+        toAnchor.y = 0f;
+        Vector3 pull = Vector3.ClampMagnitude(toAnchor * 4f, 3f);
+
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = controller.isGrounded ? -2f : verticalVelocity + gravity * Time.deltaTime;
+        controller.Move((pull + Vector3.up * verticalVelocity) * Time.deltaTime);
     }
 
     // ---------- Water ----------
@@ -251,7 +297,11 @@ public class PlayerController : MonoBehaviour
 
     private void HandleLook()
     {
-        Vector2 look = LookInput * lookSensitivity;
+        Vector2 look = LookInput * lookSensitivity * GameSettings.MouseSensitivity;
+        if (GameSettings.InvertY)
+        {
+            look.y = -look.y;
+        }
 
         transform.Rotate(Vector3.up * look.x);
 

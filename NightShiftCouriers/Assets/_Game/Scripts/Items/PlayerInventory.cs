@@ -140,7 +140,7 @@ public class PlayerInventory : NetworkBehaviour
             DrainBattery();
         }
 
-        if (!IsOwner || UIState.MenuOpen || player.IsDead)
+        if (!IsOwner || UIState.InputBlocked || player.IsDead)
         {
             return;
         }

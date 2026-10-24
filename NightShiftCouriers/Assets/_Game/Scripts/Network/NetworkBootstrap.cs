@@ -127,7 +127,8 @@ public class NetworkBootstrap : MonoBehaviour
         busy = false;
     }
 
-    private void Disconnect()
+    // Leave the game (also used by the pause menu's "Leave game" button).
+    public void Disconnect()
     {
         steam.LeaveLobby();
         network.Shutdown();
@@ -138,6 +139,7 @@ public class NetworkBootstrap : MonoBehaviour
 
     private void OnGUI()
     {
+        UITheme.Apply();
         if (network == null)
         {
             return;
@@ -145,7 +147,10 @@ public class NetworkBootstrap : MonoBehaviour
 
         if (network.IsListening)
         {
-            DrawConnectedPanel();
+            if (!UIState.HideHud)
+            {
+                DrawConnectedPanel();
+            }
         }
         else if (!autoStartHost)
         {
@@ -231,7 +236,8 @@ public class NetworkBootstrap : MonoBehaviour
                 DrawRolePicker();
                 if (network.IsServer)
                 {
-                    if (GUILayout.Button("START SHIFT")) ShiftSpawner.Instance.StartShift();
+                    if (BuildInfo.IsDemoOver(campaign.Night)) GUILayout.Label("That was the last demo night.");
+                    else if (GUILayout.Button("START SHIFT")) ShiftSpawner.Instance.StartShift();
                     GUILayout.Label("Wait for your crew to join first.");
                 }
                 else
@@ -249,7 +255,7 @@ public class NetworkBootstrap : MonoBehaviour
         if (voice != null)
         {
             GUILayout.Label(voice.Status);
-            if (voice.IsConnected && GUILayout.Button("Mic: " + voice.Mode + (voice.Mode == VoiceMode.PushToTalk ? " (hold V)" : "")))
+            if (voice.IsConnected && GUILayout.Button("Mic: " + voice.Mode + (voice.Mode == VoiceMode.PushToTalk ? " (hold " + KeyBindings.DisplayName("talk") + ")" : "")))
             {
                 voice.SetMode((VoiceMode)(((int)voice.Mode + 1) % 3));
             }

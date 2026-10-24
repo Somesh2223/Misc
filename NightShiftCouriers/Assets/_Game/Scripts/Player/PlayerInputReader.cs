@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Reads keyboard/mouse/gamepad input with the new Input System.
 // The actions are created in code so there is no .inputactions asset to set up.
+// Keyboard/mouse keys can be changed in Settings > Controls (KeyBindings).
 public class PlayerInputReader : MonoBehaviour
 {
     private InputAction moveAction;
@@ -15,7 +17,9 @@ public class PlayerInputReader : MonoBehaviour
     private InputAction useAction;
     private InputAction openAction;
     private InputAction journalAction;
+    private InputAction pushToTalkAction;
     private readonly InputAction[] slotActions = new InputAction[4];
+    private readonly List<InputAction> allActions = new List<InputAction>();
 
     public Vector2 Move => moveAction.ReadValue<Vector2>();
     public Vector2 Look => lookAction.ReadValue<Vector2>();
@@ -28,6 +32,7 @@ public class PlayerInputReader : MonoBehaviour
     public bool UsePressedThisFrame => useAction.WasPressedThisFrame();
     public bool OpenPressedThisFrame => openAction.WasPressedThisFrame();
     public bool JournalPressedThisFrame => journalAction.WasPressedThisFrame();
+    public bool PushToTalkHeld => pushToTalkAction.IsPressed();
 
     // The inventory slot (0-3) whose number key was pressed this frame, or -1.
     public int SlotPressedThisFrame
@@ -80,46 +85,53 @@ public class PlayerInputReader : MonoBehaviour
 
         openAction = new InputAction("OpenPackage", InputActionType.Button, "<Keyboard>/f");
         journalAction = new InputAction("Journal", InputActionType.Button, "<Keyboard>/j");
+        pushToTalkAction = new InputAction("PushToTalk", InputActionType.Button, "<Keyboard>/v");
 
         for (int i = 0; i < slotActions.Length; i++)
         {
             slotActions[i] = new InputAction("Slot" + (i + 1), InputActionType.Button, "<Keyboard>/" + (i + 1));
         }
+
+        allActions.AddRange(new[] { moveAction, lookAction, sprintAction, crouchAction, jumpAction, interactAction,
+            throwAction, useAction, openAction, journalAction, pushToTalkAction });
+        allActions.AddRange(slotActions);
+        ApplyKeyBindings();
     }
 
     private void OnEnable()
     {
-        moveAction.Enable();
-        lookAction.Enable();
-        sprintAction.Enable();
-        crouchAction.Enable();
-        jumpAction.Enable();
-        interactAction.Enable();
-        throwAction.Enable();
-        useAction.Enable();
-        openAction.Enable();
-        journalAction.Enable();
-        foreach (InputAction slot in slotActions)
+        KeyBindings.Changed += ApplyKeyBindings;
+        foreach (InputAction action in allActions)
         {
-            slot.Enable();
+            action.Enable();
         }
     }
 
     private void OnDisable()
     {
-        moveAction.Disable();
-        lookAction.Disable();
-        sprintAction.Disable();
-        crouchAction.Disable();
-        jumpAction.Disable();
-        interactAction.Disable();
-        throwAction.Disable();
-        useAction.Disable();
-        openAction.Disable();
-        journalAction.Disable();
-        foreach (InputAction slot in slotActions)
+        KeyBindings.Changed -= ApplyKeyBindings;
+        foreach (InputAction action in allActions)
         {
-            slot.Disable();
+            action.Disable();
         }
+    }
+
+    private void OnDestroy()
+    {
+        foreach (InputAction action in allActions)
+        {
+            action.Dispose();
+        }
+    }
+
+    // Use the keys the player picked in the settings menu.
+    private void ApplyKeyBindings()
+    {
+        Dictionary<string, InputAction> byName = new Dictionary<string, InputAction>();
+        foreach (InputAction action in allActions)
+        {
+            byName[action.name] = action;
+        }
+        KeyBindings.ApplyTo(byName);
     }
 }

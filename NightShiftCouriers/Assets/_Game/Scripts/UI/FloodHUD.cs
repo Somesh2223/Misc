@@ -45,6 +45,10 @@ public class FloodHUD : MonoBehaviour
 
     private void OnGUI()
     {
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         FloodManager flood = FloodManager.Instance;
         if (flood == null)
         {

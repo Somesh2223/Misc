@@ -5,6 +5,10 @@ public class DeliveryHUD : MonoBehaviour
 {
     private void OnGUI()
     {
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         DeliveryManager manager = DeliveryManager.Instance;
         if (manager == null)
         {

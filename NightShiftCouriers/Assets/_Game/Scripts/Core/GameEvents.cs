@@ -22,6 +22,9 @@ public static class GameEvents
     public static event Action<float> PlayerDamaged;
     public static event Action PlayerDied;
 
+    // A monster changed AI state (raised on every machine). The AI Director and the music listen to this.
+    public static event Action<MonsterBase, MonsterState> MonsterStateChanged;
+
     public static void RaiseNoise(Vector3 position, float loudness, bool fromWater)
     {
         NoiseMade?.Invoke(position, loudness, fromWater);
@@ -50,5 +53,10 @@ public static class GameEvents
     public static void RaisePlayerDied()
     {
         PlayerDied?.Invoke();
+    }
+
+    public static void RaiseMonsterStateChanged(MonsterBase monster, MonsterState state)
+    {
+        MonsterStateChanged?.Invoke(monster, state);
     }
 }

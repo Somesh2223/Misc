@@ -152,6 +152,10 @@ public class PlayerHealth : NetworkBehaviour
 
     private void OnGUI()
     {
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         if (!IsSpawned || !IsOwner)
         {
             return;

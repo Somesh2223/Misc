@@ -44,6 +44,18 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - [ ] Low-poly city art kit (needs an asset pack you choose; the greybox stays for now)
 - [ ] Playtest: "Do players share clips and laugh?"
 
+## Milestone 5 progress (polish & demo)
+- [x] Brahmarakshas: lives in the Old Haveli and never leaves; chants, lights candles, shuts doors by itself; has to bash closed doors (two couriers can hold one shut); firecrackers keep it busy
+- [x] Mud Crawler: travels under the street between drain grates; gurgles, bubbles, rattles a grate, then grabs anyone standing still; a teammate frees them with E
+- [x] AI Director: sends extra monsters from hidden spawn points based on the flood stage, crew stress (damage, noise, being hunted) and quiet time; backs off after a peak; plays scare sounds when nothing has happened for a while (F3 shows it)
+- [x] Audio pass: rain that follows the flood and quietens indoors, thunder with lightning, distant sirens, dogs, temple bells, underwater muffling, heartbeat and stingers when a monster hunts nearby
+- [x] UI polish: one look for every window, crosshair with "[E] ..." prompts, pause menu (Esc), hide HUD (F1)
+- [x] Settings: volumes (master, effects, ambience, voice), mouse sensitivity and invert, field of view, quality, fullscreen, V-sync, FPS counter, retro look, key rebinding; saved between sessions
+- [x] Trailer tools: free camera (F9) and hide HUD (F1). See `Docs/TRAILER_AND_DEMO.md`
+- [x] Next Fest demo build: 3 nights, then a thank-you / wishlist screen (Night Shift > Build > Windows Demo)
+- [x] Steam page draft (`Docs/STEAM_PAGE.md`) and post-MVP backlog (`Docs/POST_MVP_BACKLOG.md`)
+- [ ] Playtest: "Is the night tense all the way through, without being unfair?"
+
 ## How multiplayer works (read this first)
 - Every scene has a **NetworkManager** object. The single-player test scenes start hosting automatically, so you
   play alone as the host. `City_Greybox` shows a menu instead.
@@ -80,7 +92,12 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 | Throw held package | Left mouse |
 | Skip to next flood stage (debug, host only) | N |
 | Restart the shift after it ends (host only) | R |
-| Free the mouse | Esc (click to re-lock) |
+| Pause menu / settings (frees the mouse) | Esc |
+| Hide the HUD (screenshots) | F1 |
+| Monster and AI Director debug panel | F3 |
+| Free camera for trailer shots | F9 (WASD / Q / E fly, Shift fast, Ctrl slow, wheel = speed) |
+| Open / close a door in a haunted house | E |
+| Pull a teammate free of the Mud Crawler | E while looking at them |
 | Grab a wall / rope (climb) | Space while facing a green climbable surface; W/S/A/D to move; Space jumps off; Ctrl lets go |
 | Pull up a climbing teammate | Stand above them and press E while looking at them |
 | Select item slot | 1 - 4 |
@@ -141,6 +158,26 @@ Unity 6 (URP) project. Design: see `GAME_PLAN.md`.
 - **Signal Ghost**: walk into the yellow live-wire puddle. You die, drop your badge, and fly as a ghost: E near a streetlight flickers it, right mouse rings a bell, monsters are marked. With 2 players: the living one picks up the badge (E) and presses E on the orange shrine to revive you. Alone: the whole crew is dead, so the shift ends.
 - **Body cam**: on the results screen the best clips play under the summary; press "Save highlight clips (PNG)" and open the folder it shows.
 - **F10** toggles the retro look.
+
+## Testing Milestone 5
+Run each menu item, then Play. Keys can be changed in Esc > Settings > Controls (keyboard and mouse only).
+
+| Menu item | What to check |
+|---|---|
+| Create Test_Monster_Brahmarakshas Scene | Listen for chanting from the house; the candles are lit while it is home and flicker when it hunts. Carry a package to the study (back-right room). Close doors behind you (E): it stops and bashes them. With 2 players: both stand at a closed door and it cannot get through. Throw a firecracker (decoy) inside: it goes to the bang and stays there for a while. It never follows you out of the front door. |
+| Create Test_Monster_MudCrawler Scene | Walk down the street past the grates: gurgling and bubbles show where it is. Stand still next to a grate for a second and a half: the grate rattles, then it grabs you and you cannot move. Alone, it lets go after a few seconds; with 2 players, the other presses E on you to pull you free. Keep moving and it never gets you. |
+| Create Test_Director Scene | No monsters at first. Press F3: the panel shows the director's phase, stress and budget. After a few seconds it sends monsters from behind the buildings, never where you are looking. Make noise and take hits: stress climbs, the phase goes to Peak, then Relax (no new monsters for a while). Stand still somewhere quiet: a scare sound plays nearby. |
+| Create City_Greybox Scene | The Old Haveli is east of the temple (follow the street past the rooftop flat). One package on the depot table goes there. Grates line the streets north of the canal. On later nights (higher flood) the director sends more. |
+
+Settings and polish
+- Esc opens the pause menu (Esc again goes back / closes). Try every slider; quit and restart: the settings stay.
+- Controls page: click a key, press a new one (Esc cancels). The prompts on screen ("[E] Open the door") follow your keys.
+- F1 hides everything; F9 flies the camera (your courier stays where they are); F10 toggles the retro look.
+
+Demo build
+- Night Shift > Build > Preview Demo Rules In Editor (tick it), then play City_Greybox: "DEMO" in the top right,
+  and after the third night the depot shows the thank-you screen instead of START SHIFT. Untick it afterwards.
+- Night Shift > Build > Windows Demo makes the real build in `Builds/Demo/`. Details in `Docs/TRAILER_AND_DEMO.md`.
 
 ## Testing multiplayer
 
@@ -205,12 +242,12 @@ Saved clips go to `%USERPROFILE%\AppData\LocalLow\DefaultCompany\NightShiftCouri
 - **Package versions are unverified**: the registry was not reachable while writing this. Vivox is pinned to 16.7.0 and Authentication to 3.4.0 (the Vivox calls were written from its documented API without being able to read the docs page; the `Channel3DProperties` constructor argument order is the likeliest thing to need a fix). `com.unity.netcode.gameobjects` is pinned to 2.1.1; if Unity says that version does not exist, pick the newest 2.x in Package Manager. The Facepunch transport is pinned to a git commit and was written for NGO 1.x; if it does not compile against NGO 2.x, update it or tell me the errors.
 - If the console shows duplicate network prefab warnings, delete the auto-generated `DefaultNetworkPrefabs` list (the game registers its prefabs in `GameNetworkConfig`).
 - Network RPCs use the classic `[ServerRpc]` / `[ClientRpc]` attributes; NGO 2.x may show deprecation warnings for them (harmless).
-- Sounds are generated in code (bells, laughter, screams, bangs) as placeholders until the audio pass (M5).
+- Sounds are still generated in code (rain, thunder, chanting, bells, screams). They are placeholders: swap them for recorded sounds later (see `Docs/POST_MVP_BACKLOG.md`).
+- Menus are drawn with Unity's immediate-mode GUI (OnGUI) and need a mouse; gamepad menu navigation is not built.
 - The radio uses Vivox's "transmit to all channels" mode; it has no static effect yet, and dead players cannot hijack it yet (M4).
 - The Chudail walks the navigation map built at shift start; it does not swim, so deep water does not stop it (streets just flood around her).
 - Ghost "phone booths" (plan 4.10) are not built; ghosts speak through radios only.
 - The retro effect works with Unity's built-in renderer (this project's current setup). If you switch to URP, it needs to be ported to a URP renderer feature.
 - One test machine means no real latency: expect to tune the smoothing and the speed check once you play over the internet.
-- Climbing and wetness (plan 4.1) are not built yet (M3 / later).
-- Water is a flat trigger box; there is no water shader or underwater effect yet.
-- Sounds are not implemented, so the Jal-Pishach tells are visual only (ripples).
+- Water is a flat trigger box; there is no water shader yet.
+- Underwater muffling is a low-pass filter on the listener; there is still no underwater visual effect.

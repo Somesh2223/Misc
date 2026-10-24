@@ -10,6 +10,9 @@ public class WorldItem : NetworkBehaviour, IServerInteractable
     private int pendingIndex = -1;
     private int payload; // server only: e.g. whose courier badge this is
 
+    // What this item is (for the "[E] Pick up ..." prompt).
+    public ItemData Item => GameNetworkConfig.Instance != null ? GameNetworkConfig.Instance.ItemCatalog.Get(itemIndex.Value) : null;
+
     public void ServerInit(int catalogIndex, int payloadValue = 0)
     {
         pendingIndex = catalogIndex;

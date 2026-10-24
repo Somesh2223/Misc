@@ -1,8 +1,7 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 // Connects the local player to the crew's voice channel (Vivox) and keeps their 3D position up to date.
-// Only the owner runs this (NetworkPlayer enables it). Hold V to talk in push-to-talk mode.
+// Only the owner runs this (NetworkPlayer enables it). Hold the push-to-talk key (V by default) to talk in push-to-talk mode.
 [RequireComponent(typeof(NetworkPlayer))]
 public class PlayerVoice : MonoBehaviour
 {
@@ -10,12 +9,14 @@ public class PlayerVoice : MonoBehaviour
     private float retrySeconds = 10f;
 
     private NetworkPlayer networkPlayer;
+    private PlayerInputReader input;
     private bool joining;
     private float retryTimer;
 
     private void Awake()
     {
         networkPlayer = GetComponent<NetworkPlayer>();
+        input = GetComponent<PlayerInputReader>();
     }
 
     private async void Update()
@@ -43,7 +44,11 @@ public class PlayerVoice : MonoBehaviour
             return;
         }
 
-        voice.PushToTalkHeld = Keyboard.current != null && Keyboard.current.vKey.isPressed;
+        if (!Mathf.Approximately(voice.OutputVolume, GameSettings.VoiceVolume))
+        {
+            voice.SetOutputVolume(GameSettings.VoiceVolume);
+        }
+        voice.PushToTalkHeld = input != null && input.PushToTalkHeld && !UIState.MenuOpen;
         voice.UpdatePosition(gameObject);
 
         // Carrying a radio puts you on the crew's long-range channel too.

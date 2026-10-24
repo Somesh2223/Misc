@@ -29,6 +29,7 @@ public class ShopWindow : MonoBehaviour
 
     private void OnGUI()
     {
+        UITheme.Apply();
         if (!isOpen)
         {
             return;

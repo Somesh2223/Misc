@@ -1,8 +1,7 @@
 using UnityEngine;
-using UnityEngine.InputSystem;
 
 // The retro / VHS post-process on the player's camera (plan section 2 and 4.17).
-// Works with Unity's built-in renderer (this project's default). F10 toggles it.
+// Works with Unity's built-in renderer (this project's default). F10 (PauseMenu) or Settings > Graphics toggles it.
 // The body cam snapshots go through it too, so highlight clips look like tape.
 [RequireComponent(typeof(Camera))]
 public class RetroCameraEffect : MonoBehaviour
@@ -19,19 +18,23 @@ public class RetroCameraEffect : MonoBehaviour
     [SerializeField, Range(0f, 3f)] private float vignette = 0.9f;
 
     private Material material;
-    private bool effectOn = true;
 
-    private void Update()
+    // Used by the trailer camera so its shots have the same look.
+    public void CopySettingsFrom(RetroCameraEffect other)
     {
-        if (Keyboard.current != null && Keyboard.current.f10Key.wasPressedThisFrame)
-        {
-            effectOn = !effectOn;
-        }
+        shader = other.shader;
+        pixelSize = other.pixelSize;
+        colorSteps = other.colorSteps;
+        scanlines = other.scanlines;
+        grain = other.grain;
+        chroma = other.chroma;
+        wobble = other.wobble;
+        vignette = other.vignette;
     }
 
     private void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
-        if (!effectOn || shader == null || !shader.isSupported)
+        if (!GameSettings.RetroEffect || shader == null || !shader.isSupported)
         {
             Graphics.Blit(source, destination);
             return;

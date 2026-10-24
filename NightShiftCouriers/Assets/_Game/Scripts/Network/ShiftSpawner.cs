@@ -12,12 +12,16 @@ public class ShiftSpawner : MonoBehaviour
     [Header("Prefabs")]
     [SerializeField] private GameObject campaignPrefab;
     [SerializeField] private GameObject ghostWorldPrefab;
+    [SerializeField, Tooltip("Doors and server-played sounds (WorldSync).")]
+    private GameObject worldSyncPrefab;
     [SerializeField] private GameObject floodPrefab;
     [SerializeField] private GameObject deliveryPrefab;
     [SerializeField] private GameObject packagePrefab;
     [SerializeField] private GameObject jalPishachPrefab;
     [SerializeField] private GameObject chudailPrefab;
     [SerializeField] private GameObject vetalaPrefab;
+    [SerializeField] private GameObject brahmarakshasPrefab;
+    [SerializeField] private GameObject mudCrawlerPrefab;
 
     [Header("Shift")]
     [SerializeField, Tooltip("Start the shift as soon as the host starts (test scenes). Off = the host presses START SHIFT.")]
@@ -87,6 +91,12 @@ public class ShiftSpawner : MonoBehaviour
         GameObject ghostWorld = Instantiate(ghostWorldPrefab);
         ghostWorld.GetComponent<NetworkObject>().Spawn(true);
 
+        if (worldSyncPrefab != null)
+        {
+            GameObject worldSync = Instantiate(worldSyncPrefab);
+            worldSync.GetComponent<NetworkObject>().Spawn(true);
+        }
+
         if (autoStartShift)
         {
             StartShift();
@@ -124,6 +134,10 @@ public class ShiftSpawner : MonoBehaviour
         {
             return;
         }
+        if (BuildInfo.IsDemoOver(campaign.Night))
+        {
+            return; // the demo's last night is done (DemoEndWindow shows the wishlist screen)
+        }
         ShopWindow.Close();
         campaign.ServerSetPhase(ShiftPhase.Shift);
 
@@ -157,9 +171,19 @@ public class ShiftSpawner : MonoBehaviour
             SpawnWorldItem(point);
         }
 
+        // Points marked "director only" are left for the AI Director to use later in the night.
         foreach (MonsterSpawnPoint point in FindObjectsByType<MonsterSpawnPoint>(FindObjectsSortMode.None))
         {
-            SpawnMonster(point);
+            if (!point.directorOnly)
+            {
+                ServerSpawnMonsterAt(point);
+            }
+        }
+
+        AIDirector director = GetComponent<AIDirector>();
+        if (director != null)
+        {
+            director.ServerBeginShift();
         }
     }
 
@@ -244,8 +268,14 @@ public class ShiftSpawner : MonoBehaviour
         }
         shiftObjects.Clear();
 
+        if (WorldSync.Instance != null)
+        {
+            WorldSync.Instance.ServerResetDoors();
+        }
+
         foreach (NetworkPlayer player in NetworkPlayer.All)
         {
+            player.ServerSetHeld(false, Vector3.zero);
             player.GetComponent<PlayerGrabber>().ServerDrop();
             player.Inventory.ServerSetFlashlight(false);
             player.Inventory.ServerRemoveAll(ItemType.CourierBadge);
@@ -294,11 +324,54 @@ public class ShiftSpawner : MonoBehaviour
     }
 
     // Used by cursed packages and broken customer rules to let something loose.
+    // Monsters that need a home (water, a haunted house) become a Chudail when there is none here.
     public void ServerSpawnMonster(MonsterKind kind, Vector3 position)
     {
-        GameObject prefab = kind == MonsterKind.Vetala ? vetalaPrefab : chudailPrefab;
+        if (kind == MonsterKind.JalPishach || (kind == MonsterKind.Brahmarakshas && HauntedHouse.FindContaining(position) == null))
+        {
+            kind = MonsterKind.Chudail;
+        }
+        GameObject prefab = PrefabFor(kind);
+        if (prefab == null)
+        {
+            return;
+        }
         GameObject instance = Instantiate(prefab, position, Quaternion.identity);
         ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
+    }
+
+    // Spawns the monster a scene marker asks for. Also used by the AI Director, so it returns the new object.
+    public NetworkObject ServerSpawnMonsterAt(MonsterSpawnPoint point)
+    {
+        GameObject prefab = PrefabFor(point.kind);
+        if (prefab == null)
+        {
+            Debug.LogWarning("No prefab for monster " + point.kind + ". Re-run the scene builder.", point);
+            return null;
+        }
+
+        GameObject instance = Instantiate(prefab, point.transform.position, point.transform.rotation);
+        JalPishach waterMonster = instance.GetComponent<JalPishach>();
+        if (waterMonster != null)
+        {
+            waterMonster.ServerSetHome(point.homeWater);
+        }
+        NetworkObject networkObject = instance.GetComponent<NetworkObject>();
+        ServerSpawnAndTrack(networkObject);
+        return networkObject;
+    }
+
+    private GameObject PrefabFor(MonsterKind kind)
+    {
+        switch (kind)
+        {
+            case MonsterKind.JalPishach: return jalPishachPrefab;
+            case MonsterKind.Chudail: return chudailPrefab;
+            case MonsterKind.Vetala: return vetalaPrefab;
+            case MonsterKind.Brahmarakshas: return brahmarakshasPrefab;
+            case MonsterKind.MudCrawler: return mudCrawlerPrefab;
+        }
+        return null;
     }
 
     private void SpawnWorldItem(WorldItemSpawnPoint point)
@@ -310,27 +383,6 @@ public class ShiftSpawner : MonoBehaviour
         }
         GameObject instance = Instantiate(GameNetworkConfig.Instance.ItemPrefabs.worldItem, point.transform.position, Quaternion.identity);
         instance.GetComponent<WorldItem>().ServerInit(index);
-        ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
-    }
-
-    private void SpawnMonster(MonsterSpawnPoint point)
-    {
-        GameObject prefab = jalPishachPrefab;
-        if (point.kind == MonsterKind.Chudail)
-        {
-            prefab = chudailPrefab;
-        }
-        else if (point.kind == MonsterKind.Vetala)
-        {
-            prefab = vetalaPrefab;
-        }
-
-        GameObject instance = Instantiate(prefab, point.transform.position, point.transform.rotation);
-        JalPishach waterMonster = instance.GetComponent<JalPishach>();
-        if (waterMonster != null)
-        {
-            waterMonster.ServerSetHome(point.homeWater);
-        }
         ServerSpawnAndTrack(instance.GetComponent<NetworkObject>());
     }
 }

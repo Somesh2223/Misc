@@ -6,9 +6,12 @@ using UnityEngine;
 // The playable level: a depot with a shop and extraction zone, a flooding canal with a Jal-Pishach,
 // streets with a Chudail, wires and a balcony with Vetalas, a raft workbench with parts to find,
 // climbable drainpipes, and deliveries (one needs two people).
+// Milestone 5: the Old Haveli (a haunted house with a Brahmarakshas), drain grates for the Mud Crawler,
+// and hidden spawn points for the AI Director.
 public static class CityGreyboxSceneBuilder
 {
     private const string ScenePath = "Assets/_Game/Scenes/City_Greybox/City_Greybox.unity";
+    private static readonly Vector3 HaveliCentre = new Vector3(48f, 0f, 30f);
 
     [MenuItem("Night Shift/Create City_Greybox Scene")]
     public static void Build()
@@ -30,6 +33,8 @@ public static class CityGreyboxSceneBuilder
         BuildRaftArea();
         BuildVetalaPerches();
         BuildStreetlights();
+        BuildHaveli();
+        BuildDrains();
 
         // Water: the city floods, and the canal strip (z 0..10) is where the Jal-Pishach lives
         SceneBuildHelpers.MakeWater("Flood Water (city)", new Vector3(0f, -0.5f, 0f), 140f, 140f, true);
@@ -40,11 +45,20 @@ public static class CityGreyboxSceneBuilder
         SceneBuildHelpers.MakeNavMeshSurface();
         SceneBuildHelpers.MakeMonsterSpawn(MonsterKind.Chudail, new Vector3(-15f, 0.1f, 50f));
 
+        // The AI Director sends more monsters from these when the crew is coping (and nobody is looking).
+        SceneBuildHelpers.MakeDirectorSpawn(MonsterKind.Chudail, new Vector3(-50f, 0.1f, 25f));
+        SceneBuildHelpers.MakeDirectorSpawn(MonsterKind.Chudail, new Vector3(-40f, 0.1f, 58f));
+        SceneBuildHelpers.MakeDirectorSpawn(MonsterKind.Chudail, new Vector3(35f, 0.1f, 58f));
+        SceneBuildHelpers.MakeDirectorSpawn(MonsterKind.JalPishach, new Vector3(-45f, -0.5f, 5f), canalWater);
+        SceneBuildHelpers.MakeDirectorSpawn(MonsterKind.MudCrawler, new Vector3(0f, 0f, 26f));
+
         // Deliveries
         SceneBuildHelpers.MakeDeliveryPoint("12 Market Street", new Vector3(-20f, 0f, 25f), new Vector3(3f, 2.5f, 3f));
         SceneBuildHelpers.MakeDeliveryPoint("7 Temple Lane", new Vector3(10f, 0f, 35f), new Vector3(3f, 2.5f, 3f));
         SceneBuildHelpers.MakeDeliveryPoint("Mrs. Iyer, Rooftop Flat", new Vector3(25f, 3f, 31f), new Vector3(3f, 2.5f, 3f));
         SceneBuildHelpers.MakeDeliveryPoint("Lane House Roof", new Vector3(-8f, 8f, 40f), new Vector3(3f, 2.5f, 3f));
+
+        SceneBuildHelpers.MakeDeliveryPoint("The Old Haveli", HaveliCentre + new Vector3(4f, 0f, 3.5f), new Vector3(2f, 1.5f, 2f));
 
         // Up to four players start side by side in the depot yard
         for (int i = 0; i < 4; i++)
@@ -76,6 +90,8 @@ public static class CityGreyboxSceneBuilder
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetWetPackageData(), new Vector3(1f, 1.3f, -31f), "Mrs. Iyer, Rooftop Flat");
         // This one is always cursed (plan 4.9): deliver it unopened, or open it and gamble.
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(2.5f, 1.3f, -31f), "Lane House Roof", true);
+        // Deep inside the haunted house: close the doors behind you.
+        SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetStandardPackageData(), new Vector3(3.6f, 1.3f, -31f), "The Old Haveli");
         // Needs two players to lift: a bonus for crews of 2+ (the quota can be met without it)
         SceneBuildHelpers.MakePackageSpawn(SceneBuildHelpers.GetHeavyPackageData(), new Vector3(-3f, 0.4f, -28f), "12 Market Street");
 
@@ -155,5 +171,28 @@ public static class CityGreyboxSceneBuilder
 
         SceneBuildHelpers.MakeBlock("Temple Balcony", new Vector3(16f, 4.5f, 34.4f), new Vector3(4f, 0.3f, 1.2f));
         SceneBuildHelpers.MakeMonsterSpawn(MonsterKind.Vetala, new Vector3(16f, 4.3f, 34.4f));
+    }
+
+    // The Old Haveli: a 16 x 16 m haunted house east of the temple, front door facing the canal.
+    // Its Brahmarakshas never leaves; the delivery is in the study at the back.
+    private static void BuildHaveli()
+    {
+        SceneBuildHelpers.MakeHauntedHouse("The Old Haveli", HaveliCentre, 16f, 16f);
+        SceneBuildHelpers.MakeMonsterSpawn(MonsterKind.Brahmarakshas, HaveliCentre + new Vector3(-4f, 0.1f, 4f));
+        SceneBuildHelpers.MakeItemSpawn(SceneBuildHelpers.DecoyItem, HaveliCentre + new Vector3(-2f, 0.3f, -11f));
+    }
+
+    // Storm drain grates along the streets north of the canal, for the Mud Crawler.
+    private static void BuildDrains()
+    {
+        Vector3[] spots =
+        {
+            new Vector3(-2f, 0f, 14f), new Vector3(6f, 0f, 18f), new Vector3(0f, 0f, 26f), new Vector3(8f, 0f, 28f),
+            new Vector3(-12f, 0f, 30f), new Vector3(-16f, 0f, 38f), new Vector3(30f, 0f, 20f), new Vector3(38f, 0f, 16f),
+        };
+        foreach (Vector3 spot in spots)
+        {
+            SceneBuildHelpers.MakeDrainGrate(spot);
+        }
     }
 }

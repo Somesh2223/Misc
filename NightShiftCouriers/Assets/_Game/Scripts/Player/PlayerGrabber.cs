@@ -94,7 +94,7 @@ public class PlayerGrabber : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsSpawned || !IsOwner || networkPlayer.IsDead)
+        if (!IsSpawned || !IsOwner || networkPlayer.IsDead || UIState.InputBlocked)
         {
             return;
         }

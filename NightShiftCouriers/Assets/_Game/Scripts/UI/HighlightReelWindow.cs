@@ -29,6 +29,7 @@ public class HighlightReelWindow : MonoBehaviour
 
     private void OnGUI()
     {
+        UITheme.Apply();
         CampaignManager campaign = CampaignManager.Instance;
         if (campaign == null || campaign.Phase != ShiftPhase.Results)
         {

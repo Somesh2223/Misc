@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -10,6 +11,10 @@ public abstract class MonsterBase : NetworkBehaviour
     [SerializeField] protected MonsterData data;
 
     protected NetworkPlayer target;
+
+    private static readonly List<MonsterBase> allMonsters = new List<MonsterBase>();
+    // Every spawned monster on this machine.
+    public static IReadOnlyList<MonsterBase> All => allMonsters;
 
     private readonly NetworkVariable<byte> syncedState = new NetworkVariable<byte>(
         0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -24,6 +29,8 @@ public abstract class MonsterBase : NetworkBehaviour
     // On the server this is the real state; on clients it is the copy sent by the server.
     public MonsterState State => IsServer ? state : (MonsterState)syncedState.Value;
     public Vector3 TargetPoint => targetPoint;
+    public MonsterKind Kind => data != null ? data.kind : MonsterKind.JalPishach;
+    public string DisplayName => data != null ? data.displayName : name;
 
     // ---------- Things each monster must define ----------
 
@@ -59,6 +66,8 @@ public abstract class MonsterBase : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        allMonsters.Add(this);
+        syncedState.OnValueChanged += OnSyncedStateChanged;
         if (IsServer)
         {
             GameEvents.NoiseMade += OnNoiseMade;
@@ -68,10 +77,18 @@ public abstract class MonsterBase : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
+        allMonsters.Remove(this);
+        syncedState.OnValueChanged -= OnSyncedStateChanged;
         if (IsServer)
         {
             GameEvents.NoiseMade -= OnNoiseMade;
         }
+    }
+
+    // Fires on every machine (the server included) when the state changes.
+    private void OnSyncedStateChanged(byte previous, byte current)
+    {
+        GameEvents.RaiseMonsterStateChanged(this, (MonsterState)current);
     }
 
     // ---------- State machine ----------

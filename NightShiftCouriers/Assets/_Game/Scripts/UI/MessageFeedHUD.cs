@@ -5,6 +5,11 @@ public class MessageFeedHUD : MonoBehaviour
 {
     private void OnGUI()
     {
+        UITheme.Apply();
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         GUIStyle style = new GUIStyle(GUI.skin.label);
         style.fontSize = 22;
         style.alignment = TextAnchor.UpperCenter;

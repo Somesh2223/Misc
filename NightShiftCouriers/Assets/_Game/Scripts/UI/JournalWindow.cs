@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // The courier's journal (plan 4.8): tonight's orders with each customer's note, and the lore found so far.
-// J opens and closes it.
+// J (rebindable) opens and closes it.
 public class JournalWindow : MonoBehaviour
 {
     private bool isOpen;
@@ -15,7 +15,9 @@ public class JournalWindow : MonoBehaviour
         {
             return;
         }
-        bool toggle = Keyboard.current.jKey.wasPressedThisFrame;
+        // The journal key can be rebound, so read it from the local player's input.
+        PlayerInputReader input = NetworkPlayer.Local != null ? NetworkPlayer.Local.GetComponent<PlayerInputReader>() : null;
+        bool toggle = input != null ? input.JournalPressedThisFrame : Keyboard.current.jKey.wasPressedThisFrame;
         bool close = isOpen && Keyboard.current.escapeKey.wasPressedThisFrame;
         if (toggle && !isOpen && UIState.MenuOpen)
         {
@@ -30,6 +32,7 @@ public class JournalWindow : MonoBehaviour
 
     private void OnGUI()
     {
+        UITheme.Apply();
         if (!isOpen)
         {
             return;

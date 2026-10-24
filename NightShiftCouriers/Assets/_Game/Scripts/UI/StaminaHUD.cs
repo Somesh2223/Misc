@@ -6,6 +6,10 @@ public class StaminaHUD : MonoBehaviour
 {
     private void OnGUI()
     {
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         NetworkPlayer local = NetworkPlayer.Local;
         if (local == null)
         {

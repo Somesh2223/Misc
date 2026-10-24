@@ -16,6 +16,7 @@ public static partial class SceneBuildHelpers
     public const string CustomerFolder = "Assets/_Game/ScriptableObjects/Customers";
     public const string LoreFolder = "Assets/_Game/ScriptableObjects/Lore";
     public const string RoleFolder = "Assets/_Game/ScriptableObjects/Roles";
+    public const string DirectorFolder = "Assets/_Game/ScriptableObjects/Director";
     public const string RetroShaderPath = "Assets/_Game/Shaders/RetroVHS.shader";
 
     // A material saved as an asset (prefabs cannot keep in-memory materials).
@@ -289,6 +290,8 @@ public static partial class SceneBuildHelpers
                 "Come alone. Whatever you hear on the way up, it is not your friends.", CustomerRule.ComeAlone, 3),
             GetCustomer("Customer_Test", "Test customer", "Test Door",
                 "Knock once, exactly once, then leave it at the door. Lights off, please.", CustomerRule.KnockOnce, 4),
+            GetCustomer("Customer_Haveli", "The scholar's widow", "The Old Haveli",
+                "Leave it on the study desk. Close every door behind you. He does not like the draught.", CustomerRule.None, 8),
         };
         EditorUtility.SetDirty(directory);
         return directory;
@@ -324,6 +327,30 @@ public static partial class SceneBuildHelpers
                     text = "Quota targets will continue to rise. Couriers who do not meet quota will be let go. "
                          + "Couriers who are let go are not to be spoken of." },
             };
+            EditorUtility.SetDirty(book);
+        }
+
+        // Pages added in later milestones are appended to books made by older builds.
+        LoreBook.Entry[] laterEntries =
+        {
+            new LoreBook.Entry { title = "The scholar of the haveli",
+                text = "He knew every verse and taught none of them. When he died, the house kept his voice. "
+                     + "If you hear chanting, close the door behind you. He has to break it to follow." },
+            new LoreBook.Entry { title = "Storm drains",
+                text = "Municipal notice: 'Do not stand on drain covers during flooding.' Somebody has scratched "
+                     + "underneath: 'Keep moving. It only takes the ones who wait.'" },
+        };
+        int firstLater = 8;
+        if (book.entries == null || book.entries.Length < firstLater + laterEntries.Length)
+        {
+            System.Collections.Generic.List<LoreBook.Entry> entries = new System.Collections.Generic.List<LoreBook.Entry>(
+                book.entries ?? new LoreBook.Entry[0]);
+            for (int i = entries.Count; i < firstLater + laterEntries.Length; i++)
+            {
+                entries.Add(i >= firstLater ? laterEntries[i - firstLater]
+                    : new LoreBook.Entry { title = "(torn page)", text = "The page has been torn out." });
+            }
+            book.entries = entries.ToArray();
             EditorUtility.SetDirty(book);
         }
         return book;
@@ -384,6 +411,27 @@ public static partial class SceneBuildHelpers
         settings.riseSpeed = fast ? 0.15f : 0.05f;
         AssetDatabase.CreateAsset(settings, path);
         AssetDatabase.SaveAssets();
+        return settings;
+    }
+
+    // ---------- AI Director ----------
+
+    // fast: short grace period and quick spawns, for the director test scene.
+    public static DirectorSettings GetDirectorSettings(bool fast)
+    {
+        DirectorSettings settings = GetOrCreateAsset<DirectorSettings>(DirectorFolder,
+            fast ? "DirectorSettings_Fast" : "DirectorSettings", out bool created);
+        if (created && fast)
+        {
+            settings.baseBudget = 2;
+            settings.graceSeconds = 5f;
+            settings.spawnInterval = 8f;
+            settings.quietSecondsBeforeScare = 15f;
+            settings.relaxSeconds = 10f;
+            settings.minSpawnDistance = 12f;
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+        }
         return settings;
     }
 
@@ -458,6 +506,44 @@ public static partial class SceneBuildHelpers
         });
     }
 
+    public static MonsterData GetBrahmarakshasData()
+    {
+        return GetMonsterData("Monster_Brahmarakshas", data =>
+        {
+            data.displayName = "Brahmarakshas";
+            data.kind = MonsterKind.Brahmarakshas;
+            data.loreEntry = 8;
+            data.wanderSpeed = 1f;
+            data.investigateSpeed = 1.8f;
+            data.huntSpeed = 2.6f;
+            data.hearingRadiusPerLoudness = 5f;
+            data.huntNoiseFraction = 0.35f;
+            data.sightRange = 14f;
+            data.forgetDistance = 40f;
+            data.loseTargetSeconds = 8f;
+            data.attackRange = 1.8f;
+            data.attackWindup = 1f;
+            data.attackDamage = 55f;
+            data.cooldownSeconds = 5f;
+            data.searchSeconds = 6f;
+        });
+    }
+
+    public static MonsterData GetMudCrawlerData()
+    {
+        return GetMonsterData("Monster_MudCrawler", data =>
+        {
+            data.displayName = "Mud Crawler";
+            data.kind = MonsterKind.MudCrawler;
+            data.loreEntry = 9;
+            data.sightRange = 30f;
+            data.forgetDistance = 40f;
+            data.attackWindup = 0.8f; // how long the grate rattles before it grabs
+            data.attackDamage = 10f;  // the first bite; holding does the rest
+            data.cooldownSeconds = 12f;
+        });
+    }
+
     // ---------- Network prefabs ----------
 
     public class NetworkPrefabs
@@ -478,6 +564,9 @@ public static partial class SceneBuildHelpers
         public GameObject worldItem;
         public GameObject raft;
         public GameObject ghostWorld;
+        public GameObject brahmarakshas;
+        public GameObject mudCrawler;
+        public GameObject worldSync;
 
         // Everything the server may spawn (the player prefab is registered separately).
         public GameObject[] AllSpawnable()
@@ -485,7 +574,8 @@ public static partial class SceneBuildHelpers
             return new GameObject[]
             {
                 campaign, flood, delivery, package, jalPishach, chudail, vetala,
-                rope, plank, decoy, saltWard, glowStick, worldItem, raft, ghostWorld
+                rope, plank, decoy, saltWard, glowStick, worldItem, raft, ghostWorld,
+                brahmarakshas, mudCrawler, worldSync
             };
         }
     }
@@ -514,6 +604,9 @@ public static partial class SceneBuildHelpers
         prefabs.worldItem = BuildWorldItemPrefab();
         prefabs.raft = BuildRaftPrefab();
         prefabs.ghostWorld = BuildManagerPrefab("GhostWorld", typeof(GhostWorld), null);
+        prefabs.brahmarakshas = BuildBrahmarakshasPrefab();
+        prefabs.mudCrawler = BuildMudCrawlerPrefab();
+        prefabs.worldSync = BuildManagerPrefab("WorldSync", typeof(WorldSync), null);
         AssetDatabase.SaveAssets();
         return prefabs;
     }
@@ -680,6 +773,33 @@ public static partial class SceneBuildHelpers
         SetObjectField(script, "data", GetVetalaData());
         SetObjectField(script, "visualMaterial", GetMaterialAsset("Monster", Color.white));
         return SavePrefab(monster, "Vetala");
+    }
+
+    private static GameObject BuildBrahmarakshasPrefab()
+    {
+        GameObject monster = new GameObject("Brahmarakshas");
+        Ensure<NetworkObject>(monster);
+        Ensure<NetworkTransform>(monster);
+        NavMeshAgent agent = Ensure<NavMeshAgent>(monster);
+        agent.radius = 0.45f;
+        agent.height = 2.6f;
+        agent.enabled = false; // the server turns it on
+        Brahmarakshas script = Ensure<Brahmarakshas>(monster);
+        SetObjectField(script, "data", GetBrahmarakshasData());
+        SetObjectField(script, "visualMaterial", GetMaterialAsset("Monster", Color.white));
+        return SavePrefab(monster, "Brahmarakshas");
+    }
+
+    // No NavMeshAgent: it travels under the street from grate to grate.
+    private static GameObject BuildMudCrawlerPrefab()
+    {
+        GameObject monster = new GameObject("Mud Crawler");
+        Ensure<NetworkObject>(monster);
+        Ensure<NetworkTransform>(monster);
+        MudCrawler script = Ensure<MudCrawler>(monster);
+        SetObjectField(script, "data", GetMudCrawlerData());
+        SetObjectField(script, "visualMaterial", GetMaterialAsset("Monster", Color.white));
+        return SavePrefab(monster, "MudCrawler");
     }
 
     private static GameObject BuildRopePrefab()

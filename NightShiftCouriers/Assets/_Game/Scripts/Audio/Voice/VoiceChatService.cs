@@ -52,6 +52,15 @@ public class VoiceChatService : MonoBehaviour
         ApplyTransmit();
     }
 
+    // How loud other players' voices are (0 = muted, 1 = normal, up to 2). Set from Settings > Audio.
+    public float OutputVolume { get; private set; } = 1f;
+
+    public void SetOutputVolume(float volume)
+    {
+        OutputVolume = Mathf.Clamp(volume, 0f, 2f);
+        ApplyOutputVolume();
+    }
+
 #if VIVOX_PRESENT
     private string channelName = "";
     private string radioChannelName = "";
@@ -101,6 +110,7 @@ public class VoiceChatService : MonoBehaviour
             IsConnected = true;
             Status = "Voice: connected";
             ApplyTransmit();
+            ApplyOutputVolume();
             return true;
         }
         catch (Exception e)
@@ -243,6 +253,24 @@ public class VoiceChatService : MonoBehaviour
         VivoxService.Instance.Set3DPosition(speakerAndListener, channelName);
     }
 
+    // Vivox takes -50 (silent) to +50; 0 is normal.
+    private void ApplyOutputVolume()
+    {
+        if (!IsConnected)
+        {
+            return; // applied once we connect
+        }
+        try
+        {
+            int vivoxVolume = OutputVolume <= 0.01f ? -50 : Mathf.RoundToInt(Mathf.Clamp(Mathf.Log(OutputVolume, 2f) * 25f, -50f, 50f));
+            VivoxService.Instance.SetOutputDeviceVolume(vivoxVolume);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Could not set voice volume: " + e.Message);
+        }
+    }
+
     private void ApplyTransmit()
     {
         bool wantTransmit = Mode == VoiceMode.OpenMic || (Mode == VoiceMode.PushToTalk && PushToTalkHeld);
@@ -304,5 +332,6 @@ public class VoiceChatService : MonoBehaviour
     public Task LeaveRadioAsync() { return Task.CompletedTask; }
     public Task SetRadioOnlyAsync(bool radioOnly) { return Task.CompletedTask; }
     private void ApplyTransmit() { }
+    private void ApplyOutputVolume() { }
 #endif
 }

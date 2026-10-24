@@ -1,36 +1,45 @@
 using UnityEngine;
 
-// Debug overlay: shows each monster's current AI state at the top right.
+// Debug overlay: shows each monster's current AI state at the bottom right,
+// plus what the AI Director is thinking (host only). F3 hides it.
 public class MonsterDebugHUD : MonoBehaviour
 {
-    private MonsterBase[] monsters;
-    private float refreshTimer;
+    [SerializeField, Tooltip("Start with the overlay visible.")]
+    private bool visible = true;
 
     private void Update()
     {
-        refreshTimer -= Time.deltaTime;
-        if (refreshTimer <= 0f)
+        if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.f3Key.wasPressedThisFrame)
         {
-            monsters = FindObjectsByType<MonsterBase>(FindObjectsSortMode.None);
-            refreshTimer = 2f;
+            visible = !visible;
         }
     }
 
     private void OnGUI()
     {
-        if (monsters == null)
+        if (!visible || UIState.HideHud)
         {
             return;
         }
 
         string text = "";
-        foreach (MonsterBase monster in monsters)
+        foreach (MonsterBase monster in MonsterBase.All)
         {
             if (monster != null)
             {
-                text += monster.name + ": " + monster.State + "\n";
+                text += monster.DisplayName + ": " + monster.State + "\n";
             }
         }
-        GUI.Label(new Rect(Screen.width - 260, 20, 240, 100), text);
+
+        AIDirector director = AIDirector.Instance;
+        if (director != null && Unity.Netcode.NetworkManager.Singleton != null && Unity.Netcode.NetworkManager.Singleton.IsServer)
+        {
+            text += "\nDirector: " + director.CurrentPhase
+                    + "\nStress: " + Mathf.RoundToInt(director.Stress)
+                    + "   Budget: " + director.Spent + "/" + director.Budget
+                    + "\nQuiet for: " + Mathf.RoundToInt(director.SecondsSinceSomethingHappened) + " s";
+        }
+
+        GUI.Label(new Rect(Screen.width - 260, Screen.height - 240, 240, 200), text); // bottom right, under the crew panel
     }
 }

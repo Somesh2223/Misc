@@ -25,6 +25,10 @@ public class WorldMarkersHUD : MonoBehaviour
 
     private void OnGUI()
     {
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         NetworkPlayer local = NetworkPlayer.Local;
         Camera view = local != null ? local.PlayerCamera : null;
         if (view == null || CampaignManager.Instance == null || CampaignManager.Instance.Phase != ShiftPhase.Shift)

@@ -5,6 +5,11 @@ public class CampaignHUD : MonoBehaviour
 {
     private void OnGUI()
     {
+        UITheme.Apply();
+        if (UIState.HideHud)
+        {
+            return; // F1: screenshot mode
+        }
         CampaignManager campaign = CampaignManager.Instance;
         if (campaign == null)
         {

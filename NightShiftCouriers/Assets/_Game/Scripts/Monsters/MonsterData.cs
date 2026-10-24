@@ -8,6 +8,8 @@ public class MonsterData : ScriptableObject
     public MonsterKind kind = MonsterKind.JalPishach;
     [Tooltip("Salt wards stop this monster (plan 4.5).")]
     public bool blockedBySalt = false;
+    [Tooltip("Journal page (LoreBook index) unlocked the first time it attacks someone. -1 = none.")]
+    public int loreEntry = -1;
 
     [Header("Movement (m/s)")]
     public float wanderSpeed = 1.5f;

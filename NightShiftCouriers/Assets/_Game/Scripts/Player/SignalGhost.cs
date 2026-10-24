@@ -30,7 +30,7 @@ public class SignalGhost : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsSpawned || !IsOwner || !player.IsDead || UIState.MenuOpen)
+        if (!IsSpawned || !IsOwner || !player.IsDead || UIState.InputBlocked)
         {
             return;
         }

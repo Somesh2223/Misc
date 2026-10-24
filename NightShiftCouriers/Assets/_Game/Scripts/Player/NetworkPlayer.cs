@@ -59,6 +59,11 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     private readonly NetworkVariable<Vector3> netAimDirection = new NetworkVariable<Vector3>(
         Vector3.forward, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    // Server: a Mud Crawler is holding this player down at a drain grate.
+    private readonly NetworkVariable<bool> heldDown = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<Vector3> heldAnchor = new NetworkVariable<Vector3>(
+        Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private PlayerController controller;
     private PlayerHealth health;
@@ -110,6 +115,20 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
     public string VoiceChannel => voiceChannel.Value.ToString();
     public Vector3 AimOrigin => netAimOrigin.Value;
     public Vector3 AimDirection => netAimDirection.Value;
+    public bool IsHeldDown => heldDown.Value;
+    // Where the player is being dragged to while held (the grate).
+    public Vector3 HeldAnchor => heldAnchor.Value;
+
+    // Server: start or stop being held down by a Mud Crawler.
+    public void ServerSetHeld(bool held, Vector3 anchor)
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+        heldAnchor.Value = anchor;
+        heldDown.Value = held;
+    }
 
     private void Awake()
     {
@@ -367,8 +386,14 @@ public class NetworkPlayer : NetworkBehaviour, IServerInteractable
     // ---------- Pull-up assist (section 4.1) ----------
 
     // A teammate pressed E while looking at this player (server).
+    // Or pressed E on a teammate a Mud Crawler is holding: pull them free.
     public void ServerInteract(NetworkPlayer helper)
     {
+        if (IsHeldDown && helper != this)
+        {
+            MudCrawler.ServerTryFree(this, helper);
+            return;
+        }
         if (helper == this || !IsClimbing || helper.IsDead || IsDead)
         {
             return;

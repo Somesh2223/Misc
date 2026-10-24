@@ -119,7 +119,9 @@ public static partial class SceneBuildHelpers
     // autoHost: skip the menu and host immediately (single-player test scenes).
     // autoStartShift: start the shift as soon as hosting starts.
     // startingMoney: -1 = normal; test scenes can give the crew more to try the shop.
-    public static void MakeNetworkSetup(NetworkPrefabs prefabs, FloodSettings flood, bool autoHost, bool autoStartShift, int startingMoney = -1)
+    // director: the AI Director's tuning (null = the normal settings).
+    public static void MakeNetworkSetup(NetworkPrefabs prefabs, FloodSettings flood, bool autoHost, bool autoStartShift, int startingMoney = -1,
+        DirectorSettings director = null)
     {
         GameObject manager = new GameObject("NetworkManager");
         NetworkManager networkManager = manager.AddComponent<NetworkManager>();
@@ -143,6 +145,11 @@ public static partial class SceneBuildHelpers
         manager.AddComponent<JournalWindow>();
         manager.AddComponent<HighlightReelWindow>();
         manager.AddComponent<WorldMarkersHUD>();
+        manager.AddComponent<InteractPromptHUD>();
+        manager.AddComponent<PauseMenu>();
+        manager.AddComponent<DemoEndWindow>();
+        manager.AddComponent<TrailerCamera>();
+        manager.AddComponent<AmbienceAudio>();
 
         SerializedObject configSo = new SerializedObject(config);
         configSo.FindProperty("playerPrefab").objectReferenceValue = prefabs.player;
@@ -183,15 +190,22 @@ public static partial class SceneBuildHelpers
         SerializedObject spawnerSo = new SerializedObject(spawner);
         spawnerSo.FindProperty("campaignPrefab").objectReferenceValue = prefabs.campaign;
         spawnerSo.FindProperty("ghostWorldPrefab").objectReferenceValue = prefabs.ghostWorld;
+        spawnerSo.FindProperty("worldSyncPrefab").objectReferenceValue = prefabs.worldSync;
         spawnerSo.FindProperty("floodPrefab").objectReferenceValue = prefabs.flood;
         spawnerSo.FindProperty("deliveryPrefab").objectReferenceValue = prefabs.delivery;
         spawnerSo.FindProperty("packagePrefab").objectReferenceValue = prefabs.package;
         spawnerSo.FindProperty("jalPishachPrefab").objectReferenceValue = prefabs.jalPishach;
         spawnerSo.FindProperty("chudailPrefab").objectReferenceValue = prefabs.chudail;
         spawnerSo.FindProperty("vetalaPrefab").objectReferenceValue = prefabs.vetala;
+        spawnerSo.FindProperty("brahmarakshasPrefab").objectReferenceValue = prefabs.brahmarakshas;
+        spawnerSo.FindProperty("mudCrawlerPrefab").objectReferenceValue = prefabs.mudCrawler;
         spawnerSo.FindProperty("autoStartShift").boolValue = autoStartShift;
         spawnerSo.FindProperty("startingMoneyOverride").intValue = startingMoney;
         spawnerSo.ApplyModifiedPropertiesWithoutUndo();
+
+        // The AI Director sits next to the spawner and sends extra monsters during the shift (plan M5).
+        AIDirector aiDirector = spawnerObject.AddComponent<AIDirector>();
+        SetObjectField(aiDirector, "settings", director != null ? director : GetDirectorSettings(false));
     }
 
     // The walking map for the Chudail. It is rebuilt on the server at the start of every shift.
